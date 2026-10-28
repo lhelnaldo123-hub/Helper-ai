@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#061b16">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tender AI">
+<title>Tender Sprout AI</title>
+<link rel="manifest" id="manifestLink">
+<script>try{var t=localStorage.getItem("tsa_theme")||(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme="dark"}</script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<style>
+:root{--bg:#061b16;--panel:#0b251f;--panel2:#102d26;--line:#24433a;--green:#42e6ad;--text:#eef9f4;--muted:#9db5ab;--danger:#ff7777;--bar:#081f19;--user:#12362a;--okbg:#0d3328;--badbg:#331515;--onGreen:#05251a;--cline:#31735c;color-scheme:dark}
+:root[data-theme="light"]{--bg:#f3f7f5;--panel:#ffffff;--panel2:#e8f2ee;--line:#cddbd4;--green:#0a8f64;--text:#13221c;--muted:#5a6f66;--danger:#d33333;--bar:#ffffff;--user:#dff3ea;--okbg:#d9f5ea;--badbg:#fde4e4;--onGreen:#ffffff;--cline:#b9cfc6;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;overflow:hidden;height:100vh;height:100dvh;display:flex}
+button,input,textarea,select{font:inherit}
+button{cursor:pointer;color:var(--text)}
+button:disabled{opacity:.55;cursor:not-allowed}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:90;display:none}
+#overlay.show{display:block}
+.sidebar{position:fixed;left:-300px;top:0;bottom:0;width:285px;background:var(--bar);border-right:1px solid var(--line);z-index:100;transition:left .28s ease;display:flex;flex-direction:column;padding:15px;overflow-y:auto}
+.sidebar.open{left:0}
+.logo{width:40px;height:40px;border-radius:14px;background:var(--green);color:var(--onGreen);display:grid;place-items:center;font-size:22px;font-weight:bold;flex-shrink:0}
+.sidebar-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.sidebar .navbtn{width:100%;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:10px 12px;margin:3px 0;display:flex;align-items:center;gap:10px;font-size:14px}
+.sidebar .navbtn:hover{border-color:var(--green);background:var(--panel2)}
+.sidebar small{display:block;color:var(--muted);font-size:11px;margin:14px 0 5px}
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top));background:var(--bar);border-bottom:1px solid var(--line);width:100%}
+.iconbtn,.btn{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:7px 12px;font-size:13px}
+.iconbtn{min-width:36px;min-height:36px;font-size:16px;padding:6px 10px}
+.iconbtn:hover,.btn:hover{border-color:var(--green)}
+.primary{background:var(--green);color:var(--onGreen);border:0;border-radius:13px;padding:9px 16px;font-weight:bold}
+.modelrow{display:flex;align-items:center;gap:12px;padding:8px 14px;border-bottom:1px solid var(--line)}
+.modelrow label{font-size:12px;color:var(--muted)}
+select,input,textarea{color:var(--text);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
+select{flex:1;min-width:0}
+.status{font-size:11px;color:var(--muted)}
+.app{flex:1;display:flex;flex-direction:column;min-width:0;height:100vh;height:100dvh}
+main{flex:1;overflow-y:auto;max-width:850px;width:100%;margin:auto;padding:18px 14px 130px;scroll-behavior:smooth}
+.welcome{text-align:center;padding:20px 0}
+.welcome h1{font-size:30px;line-height:1.15;margin:10px 0;color:var(--green)}
+.welcome p{color:var(--muted);line-height:1.7}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:22px}
+.card{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:13px;min-height:84px}
+.card strong{display:block;color:var(--green);margin-bottom:8px;font-weight:600}
+.card span{font-size:14px;color:var(--muted);line-height:1.5}
+.card:hover{background:var(--panel2);border-color:var(--green)}
+.chat{display:flex;flex-direction:column;gap:14px}
+.msg{padding:14px;border:1px solid var(--line);border-radius:17px;line-height:1.7;overflow-wrap:anywhere}
+.msg strong{font-weight:600}
+.msg.user{background:var(--user);margin-left:22px}
+.msg.ai{margin-right:8px}
+.msg .who{font-size:11px;color:var(--green);margin-bottom:6px;font-weight:600}
+.msg-actions{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.msg-actions button{font-size:12px;padding:5px 10px}
+.msg.ai,.rescard{--text:#111;--green:#0a7a56;--panel:#fff;--panel2:#eef5f1;--line:#cfd9d4;background:#fff;color:#111}
+.msg.ai .btn{background:#f1f5f3}
+.thinking{display:flex;align-items:center;gap:10px;padding:14px;border:1px solid var(--line);border-radius:17px;background:var(--panel);margin-right:8px}
+.dots{display:flex;gap:4px}
+.dot{width:8px;height:8px;background:var(--green);border-radius:50%;animation:dotBounce 1.3s infinite}
+.dot:nth-child(2){animation-delay:.15s}.dot:nth-child(3){animation-delay:.3s}
+@keyframes dotBounce{0%,80%,100%{transform:translateY(0);opacity:.6}40%{transform:translateY(-8px);opacity:1}}
+.composerwrap{position:fixed;bottom:0;left:0;right:0;z-index:4;background:linear-gradient(transparent,var(--bg) 18%);padding:18px 12px calc(12px + env(safe-area-inset-bottom))}
+.composer{max-width:760px;margin:auto;background:var(--panel);border:1px solid var(--cline);border-radius:24px;padding:8px 10px}
+#prompt{display:block;width:100%;resize:none;min-height:44px;max-height:150px;border:0;background:transparent;font-size:16px;outline:none;padding:6px 8px}
+.controls{display:flex;align-items:center;gap:6px}
+.controls .iconbtn{border:0;background:transparent;border-radius:50%}
+.controls .iconbtn:hover{background:var(--panel2)}
+.controls .spacer{flex:1}
+.send{width:38px;height:38px;min-width:38px;padding:0;font-size:18px;border-radius:50%!important}
+#fileName{font-size:12px;color:var(--muted);padding:2px 8px;cursor:pointer}
+.field{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.field label{font-size:13px;color:var(--muted)}
+.field input,.field textarea,.field select{width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1;min-width:100px}
+.small{font-size:12px;color:var(--muted);line-height:1.6}
+.result{line-height:1.7}
+.hide{display:none!important}
+#downBtn{position:fixed;right:14px;bottom:110px;z-index:6;width:40px;height:40px;border-radius:50%;background:var(--green);color:var(--onGreen);border:0;font-size:18px;font-weight:bold;display:none;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+#downBtn.show{display:block}
+#installBtn{background:var(--green);color:var(--onGreen);border:0;border-radius:12px;padding:10px 14px;font-weight:bold;margin-top:8px;width:100%}
+.md p{margin:0 0 12px}.md p:last-child{margin-bottom:0}
+.md h1,.md h2,.md h3,.md h4{color:var(--green);line-height:1.3;margin:14px 0 8px}
+.md h1{font-size:22px}.md h2{font-size:19px}.md h3{font-size:17px}.md h4{font-size:15px}
+.md ul,.md ol{padding-left:24px;margin:8px 0}
+.md li{margin:5px 0}
+.md a{color:var(--green)}
+.md blockquote{border-left:4px solid var(--green);padding:6px 12px;margin:10px 0;background:var(--panel2)}
+.md hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.md table{border-collapse:collapse;display:block;overflow-x:auto;margin:12px 0;max-width:100%}
+.md th,.md td{border:1px solid var(--line);padding:8px;text-align:left;min-width:90px;vertical-align:top}
+.md th{background:var(--panel2);color:var(--green)}
+.md code{font-family:Consolas,monospace;background:#04120f;padding:2px 5px;border-radius:5px}
+.md :not(pre)>code{background:#eef3f1}
+.codebox{--text:#eef9f4;--green:#42e6ad;--panel:#0b251f;--panel2:#102d26;--line:#24433a;margin:12px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;color:var(--text)}
+.codehead{display:flex;justify-content:space-between;align-items:center;background:var(--panel2);padding:7px 12px;font-size:12px}
+.codehead button{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-size:12px}
+.codebox pre{margin:0;padding:12px;overflow:auto;background:#04120f;white-space:pre;font-size:13px;line-height:1.5}
+.codebox pre code{background:none;padding:0}
+.preview-frame{width:100%;height:350px;border:0;background:white}
+.rescard{border:1px solid var(--line);border-radius:16px;padding:16px;margin-top:16px;line-height:1.7;overflow-wrap:anywhere}
+.note{font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;color:var(--muted);line-height:1.6}
+.modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:92%;max-width:520px;max-height:85vh;overflow-y:auto;background:var(--panel);border:2px solid var(--green);border-radius:20px;padding:18px;z-index:150;display:none;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.modal.open{display:block}
+.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.modal-head h3{margin:0;color:var(--green)}
+.modal-head button{background:var(--panel);border:1px solid var(--line);border-radius:50%;width:34px;height:34px;font-size:18px}
+.fullpage{position:fixed;inset:0;z-index:200;background:var(--bg);display:none;flex-direction:column;overflow:hidden}
+.fullpage.open{display:flex}
+.quiz-top{display:flex;align-items:center;gap:12px;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top));background:var(--bar);border-bottom:1px solid var(--line)}
+.quiz-progress{height:6px;background:var(--line);border-radius:10px;overflow:hidden;flex:1}
+.quiz-progress-bar{height:100%;background:var(--green);transition:width .3s}
+.quiz-body{flex:1;overflow-y:auto;padding:16px;max-width:700px;width:100%;margin:auto}
+.q-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px}
+.q-num{font-size:11px;color:var(--green);font-weight:600;margin-bottom:8px}
+.q-text{font-size:17px;line-height:1.5;margin-bottom:14px}
+.q-options{display:flex;flex-direction:column;gap:8px}
+.q-opt{padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);text-align:left;transition:.2s}
+.q-opt:hover{border-color:var(--green)}
+.q-opt.selected{border-color:var(--green);background:var(--user)}
+.q-opt.correct{border-color:var(--green);background:var(--okbg)}
+.q-opt.wrong{border-color:var(--danger);background:var(--badbg)}
+.q-input{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);min-height:100px}
+.q-input:focus{border-color:var(--green);outline:none}
+.quiz-result{text-align:center;padding:30px 18px}
+.quiz-result .score{font-size:44px;font-weight:700;color:var(--green)}
+.timer-badge{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:6px 12px;font-size:13px;color:var(--green);font-weight:600}
+.timer-badge.warn{background:#33220d;border-color:#e6a742;color:#e6a742}
+.timer-badge.danger{background:var(--badbg);border-color:var(--danger);color:var(--danger);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.scan-preview{max-width:100%;max-height:320px;display:none;margin:14px auto;border-radius:12px}
+.slide{aspect-ratio:16/9;width:100%;border-radius:12px;padding:5% 6%;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--line);margin-top:14px}
+.slide h2{margin:0 0 3%;font-size:clamp(15px,4.6vw,26px);line-height:1.2}
+.slide ul{margin:0;padding-left:20px;font-size:clamp(11px,3.1vw,17px);line-height:1.5}
+.slide.title{justify-content:center;align-items:center;text-align:center}
+.slide.title h2{font-size:clamp(18px,6vw,34px)}
+.slide.title p{margin:0;font-size:clamp(11px,3.2vw,17px)}
+.slidenav{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px}
+.slidenotes{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+footer{text-align:center;color:#6e8b7f;font-size:11px;padding:20px}
+.suggestion-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{padding:6px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:20px;font-size:12px;cursor:pointer}
+.chip:hover{border-color:var(--green)}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.welcome h1{font-size:26px}}
+</style>
+</head>
+<body>
+<div id="overlay" onclick="closeAllModals()"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-head"><div class="logo">T</div><div><strong>Tender Sprout AI</strong><br><small style="color:var(--muted);margin:0">Teaching &amp; learning helper</small></div><button class="iconbtn" style="margin-left:auto" onclick="closeSidebar()">×</button></div>
+  <button id="installBtn">📲 Install App</button>
+  <small>CHAT</small>
+  <button class="navbtn" onclick="newChat()">＋ New Chat</button>
+  <button class="navbtn" onclick="openModal('historyModal')">◷ History</button>
+  <small>TOOLS</small>
+  <button class="navbtn" onclick="openModal('quizSetupPanel')">📝 Quiz Maker (BECE-style)</button>
+  <button class="navbtn" onclick="openFull('lessonPage')">📚 GES Lesson Plan</button>
+  <button class="navbtn" onclick="openFull('slidesPage')">🎞️ PowerPoint Slides</button>
+  <button class="navbtn" onclick="openFull('scanPage')">📷 Assignment Scanner</button>
+  <button class="navbtn" onclick="openTool('twi')">🇬🇭 Twi / French</button>
+  <button class="navbtn" onclick="openTool('code')">💻 Code Preview</button>
+  <small>SETTINGS</small>
+  <button class="navbtn" onclick="toggleTheme()">🌗 Dark / Light mode</button>
+  <button class="navbtn" onclick="openModal('settingsModal')">⚙️ API Key Settings</button>
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:5px">
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox" id="researchToggle"> 🌐 Research Web</label>
+  </div>
+</aside>
+
+<div class="app">
+<header class="top">
+  <button class="iconbtn" onclick="openSidebar()">☰</button>
+  <div class="logo">T</div>
+  <div style="flex:1"><strong style="color:var(--green)">Tender Sprout AI</strong><br><small style="color:var(--muted)">Teaching &amp; learning helper</small></div>
+  <button class="iconbtn" id="themeBtn" onclick="toggleTheme()" title="Dark / Light">☀️</button>
+  <button class="iconbtn" onclick="newChat()">＋</button>
+</header>
+<div class="modelrow">
+  <label>MODEL</label>
+  <select id="model">
+    <option value="gemini-3.8-flash" selected>Gemini 3.8 Flash</option>
+    <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
+    <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+    <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
+    <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+  </select>
+  <span class="status" id="status">Add API key</span>
+</div>
+<main id="mainScroll">
+  <section class="welcome" id="welcome">
+    <h1>Welcome to Tender<br>Sprout AI</h1>
+    <p>Chat · Quizzes · Lesson plans · PowerPoint slides · Assignment scanner</p>
+    <div class="grid">
+      <button class="card" onclick="openModal('quizSetupPanel')"><strong>📝 Quiz Maker</strong><span>Objective and theory, BECE-style option, timer and results</span></button>
+      <button class="card" onclick="openFull('lessonPage')"><strong>📚 GES Lesson Plan</strong><span>NaCCA-aligned plans you can copy or print</span></button>
+      <button class="card" onclick="openFull('slidesPage')"><strong>🎞️ PowerPoint Slides</strong><span>Generate slides and download a .pptx file</span></button>
+      <button class="card" onclick="openFull('scanPage')"><strong>📷 Assignment Scanner</strong><span>Take a photo of an assignment and get help</span></button>
+      <button class="card" data-prompt="Explain this topic in simple language, with examples and a short practice activity: "><strong>💡 Explain a topic</strong><span>Understand difficult ideas step by step</span></button>
+      <button class="card" data-prompt="Teach me HTML with live preview"><strong>💻 Code Preview</strong><span>Live website preview</span></button>
+    </div>
+  </section>
+  <section class="chat" id="chat"></section>
+  <footer>AI can make mistakes. Verify important information and official curriculum details.</footer>
+</main>
+</div>
+
+<div id="installModal" class="modal">
+  <div class="modal-head"><h3>📲 Install as an app</h3><button onclick="closeModal('installModal')">×</button></div>
+  <p class="small"><strong style="color:var(--green)">Android (Chrome):</strong> tap the ⋮ menu, then <b>Install app</b> or <b>Add to Home screen</b>.</p>
+  <p class="small"><strong style="color:var(--green)">iPhone / iPad (Safari):</strong> tap the Share button (square with arrow), scroll down, then tap <b>Add to Home Screen</b>.</p>
+  <p class="small">This works only when the app is opened from its web link (https). It cannot be installed from a file stored on the phone.</p>
+  <button class="primary" style="width:100%;margin-top:8px" onclick="closeModal('installModal')">Got it</button>
+</div>
+
+<div id="settingsModal" class="modal">
+  <div class="modal-head"><h3>⚙️ Settings</h3><button onclick="closeModal('settingsModal')">×</button></div>
+  <p class="small">Paste your Gemini API key once. It is saved on this phone, not in the code, so you will not be asked again.</p>
+  <div class="field"><label>Gemini API key</label><input id="apiKey" type="password" placeholder="Paste your API key here" autocomplete="off"></div>
+  <div class="field"><label>Model ID (optional)</label><input id="customModel" placeholder="e.g. gemini-3.8-flash"></div>
+  <div class="row"><button class="btn" id="showKeyBtn">Show</button><button class="primary" id="saveKeyBtn">Save</button><button class="btn" id="removeKeyBtn">Remove</button></div>
+  <p class="small" id="keyMessage"></p>
+  <hr style="border:0;border-top:1px solid var(--line);margin:15px 0">
+  <p class="small">Get a free API key at aistudio.google.com → Create API key. If a model fails, the app automatically tries Gemini 3.8 and 3.6.</p>
+</div>
+
+<div id="historyModal" class="modal">
+  <div class="modal-head"><h3>◷ Chat History</h3><button onclick="closeModal('historyModal')">×</button></div>
+  <div id="historyList"></div>
+  <div class="row" style="margin-top:15px"><button class="btn" id="clearHistoryBtn">Clear All</button><button class="btn" onclick="closeModal('historyModal')">Close</button></div>
+</div>
+
+<div id="toolsModal" class="modal">
+  <div class="modal-head"><h3 id="toolTitle">Tool</h3><button onclick="closeModal('toolsModal')">×</button></div>
+  <div id="toolArea"></div>
+</div>
+
+<div id="quizSetupPanel" class="modal">
+  <div class="modal-head"><h3>📝 Create Quiz</h3><button onclick="closeModal('quizSetupPanel')">×</button></div>
+  <div class="field"><label>Class / Level</label><select id="qClass" onchange="updateSubjects()"></select></div>
+  <div class="field"><label>Subject (NaCCA)</label><select id="qSubject" onchange="showTopicSuggestions(this.value,'topicSuggestions','qTopic')"><option value="">-- Select Class First --</option></select></div>
+  <div class="field"><label>✏️ Topic - write ANY topic you want</label>
+    <input id="qTopic" placeholder="e.g. Photosynthesis, Fractions, Past tense...">
+    <div class="suggestion-chips" id="topicSuggestions"></div>
+    <small style="color:var(--muted)">The chips are only suggestions.</small>
+  </div>
+  <div style="background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0">
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><input type="checkbox" id="qBecePast"> 📚 BECE-style questions</label>
+    <small style="color:var(--muted)">The AI writes NEW questions in the style of past BECE papers. They are not copies of real past papers. For real past papers, use official WAEC/GES materials.</small>
+  </div>
+  <div class="row">
+    <div class="field"><label>Number of Questions</label><select id="qNum"><option>5</option><option selected>10</option><option>15</option><option>20</option><option>25</option></select></div>
+    <div class="field"><label>Type</label><select id="qType"><option value="objective">Objective Only (Tick A-D)</option><option value="theory">Theory Only (Write below)</option><option value="mixed" selected>Mixed - Objective + Theory</option></select></div>
+  </div>
+  <div style="background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;margin:12px 0">
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600"><input type="checkbox" id="qTimerEnable" onchange="toggleTimerOptions()"> ⏱️ Add Timer?</label>
+    <div id="timerOptions" style="display:none;margin-top:10px"><div class="field"><label>Duration</label><select id="qTimer"><option value="5">5 mins</option><option value="10" selected>10 mins</option><option value="15">15 mins</option><option value="20">20 mins</option><option value="30">30 mins</option><option value="45">45 mins</option></select></div></div>
+  </div>
+  <div class="row"><button class="primary" id="genQuizBtn" onclick="generateQuiz()" style="flex:2">🚀 Generate Quiz</button><button class="btn" onclick="closeModal('quizSetupPanel')">Cancel</button></div>
+  <p class="small" id="quizStatus"></p>
+</div>
+
+<div id="quizPage" class="fullpage">
+  <div class="quiz-top">
+    <button class="iconbtn" onclick="closeQuizPage()" title="Exit Quiz">×</button>
+    <div style="flex:1;min-width:0"><strong id="quizTitle" style="color:var(--green)">Quiz</strong><br><small id="quizMeta" style="color:var(--muted)"></small></div>
+    <div class="timer-badge" id="quizTimerBadge" style="display:none">⏱️ 10:00</div>
+    <div class="quiz-progress" style="width:100px;flex:none;margin-left:8px"><div class="quiz-progress-bar" id="quizProgressBar" style="width:0%"></div></div>
+  </div>
+  <div class="quiz-body" id="quizBody"></div>
+  <div style="padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel);display:flex;gap:8px">
+    <button class="btn" onclick="closeQuizPage()">× Exit</button>
+    <button class="primary" id="quizSubmitBtn" onclick="submitQuiz()" style="flex:1">Submit Answers - See Results</button>
+  </div>
+</div>
+
+<div id="lessonPage" class="fullpage">
+  <div class="quiz-top">
+    <button class="iconbtn" onclick="closeFull('lessonPage')">×</button>
+    <div style="flex:1;min-width:0"><strong style="color:var(--green)">📚 GES / NaCCA Lesson Plan</strong><br><small style="color:var(--muted)">Basic 1–9</small></div>
+  </div>
+  <div class="quiz-body">
+    <div class="note">The strands and topics are suggestions only. Always verify the official strand, sub-strand, standard and indicator in the latest NaCCA curriculum before using the plan.</div>
+    <div class="row">
+      <div class="field"><label>Class</label><select id="lpClass" onchange="updateLessonSubjects()"></select></div>
+      <div class="field"><label>Subject</label><select id="lpSubject" onchange="updateLessonSubject()"></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Strand (choose or type your own)</label><input id="lpStrand" list="lpStrandList" oninput="updateSubstrandList()" placeholder="e.g. Number"><datalist id="lpStrandList"></datalist></div>
+      <div class="field"><label>Sub-strand (choose or type)</label><input id="lpSubstrand" list="lpSubstrandList" placeholder="e.g. Fractions"><datalist id="lpSubstrandList"></datalist></div>
+    </div>
+    <div class="field"><label>Topic</label><input id="lpTopic" placeholder="Choose a suggestion or type your own topic"><div class="suggestion-chips" id="lpTopicChips"></div></div>
+    <div class="row">
+      <div class="field"><label>Week / lesson number</label><input id="lpWeek" placeholder="e.g. Week 3, Lesson 1"></div>
+      <div class="field"><label>Duration</label><select id="lpDuration"><option>30 minutes</option><option selected>40 minutes</option><option>50 minutes</option><option>60 minutes</option><option>80 minutes</option></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Number of learners</label><input id="lpLearners" type="number" min="1" placeholder="e.g. 35"></div>
+      <div class="field"><label>Term</label><select id="lpTerm"><option>Term 1</option><option>Term 2</option><option>Term 3</option></select></div>
+    </div>
+    <div class="field"><label>Special needs / available resources (optional)</label><textarea id="lpExtra" rows="3" placeholder="e.g. mixed ability class, charts, textbooks, local materials"></textarea></div>
+    <div class="row"><button class="primary" id="lessonBtn" onclick="generateLesson()" style="flex:2">✨ Generate lesson plan</button><button class="btn" onclick="clearLesson()">Clear</button><a class="btn" href="https://nacca.gov.gh/" target="_blank" rel="noopener" style="text-decoration:none;text-align:center;color:var(--text)">NaCCA site ↗</a></div>
+    <p class="small" id="lessonStatus"></p>
+    <div id="lessonResult" class="rescard md hide"></div>
+    <div id="lessonActions" class="row hide" style="margin-top:12px">
+      <button class="btn" onclick="copyEl('lessonResult')">Copy</button>
+      <button class="btn" onclick="shareEl('lessonResult','Lesson Plan')">Share</button>
+      <button class="btn" onclick="printEl('lessonResult','Lesson Plan')">Print</button>
+      <button class="btn" onclick="downloadEl('lessonResult','lesson-plan.txt')">Download</button>
+    </div>
+    <div style="height:70px"></div>
+  </div>
+</div>
+
+<div id="slidesPage" class="fullpage">
+  <div class="quiz-top">
+    <button class="iconbtn" onclick="closeFull('slidesPage')">×</button>
+    <div style="flex:1;min-width:0"><strong style="color:var(--green)">🎞️ PowerPoint Slides</strong><br><small style="color:var(--muted)">Generate, preview, download .pptx</small></div>
+  </div>
+  <div class="quiz-body">
+    <div class="field"><label>Topic</label><input id="spTopic" placeholder="e.g. The Water Cycle, Independence of Ghana, Fractions"></div>
+    <div class="row">
+      <div class="field"><label>Class / audience</label><select id="spClass"></select></div>
+      <div class="field"><label>Number of slides</label><select id="spNum"><option>5</option><option selected>8</option><option>10</option><option>12</option><option>15</option></select></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Colour theme</label><select id="spTheme" onchange="renderSlide()"><option value="green">Green</option><option value="blue">Blue</option><option value="purple">Purple</option><option value="dark">Dark</option><option value="light">Light</option></select></div>
+      <div class="field"><label>Style</label><select id="spStyle"><option>Simple and clear</option><option>Detailed with examples</option><option>Teaching slides with questions</option><option>Short revision points</option></select></div>
+    </div>
+    <div class="field"><label>Extra instructions (optional)</label><textarea id="spExtra" rows="2" placeholder="e.g. include a quiz slide, use Ghanaian examples"></textarea></div>
+    <div class="row"><button class="primary" id="slidesBtn" onclick="generateSlides()" style="flex:2">✨ Generate slides</button><button class="btn" onclick="clearSlides()">Clear</button></div>
+    <p class="small" id="slidesStatus"></p>
+    <div id="slidesOut" class="hide">
+      <div id="slideView"></div>
+      <div class="slidenav"><button class="btn" onclick="slideGo(-1)">◀ Prev</button><span id="slideCount" class="small"></span><button class="btn" onclick="slideGo(1)">Next ▶</button></div>
+      <div class="slidenotes" id="slideNotes"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="primary" onclick="downloadPptx()">⬇ Download .pptx</button>
+        <button class="btn" onclick="copyText(deckText())">Copy</button>
+        <button class="btn" onclick="shareText(deckText(),deck.title)">Share</button>
+        <button class="btn" onclick="printDeck()">Print</button>
+      </div>
+      <p class="small">If the download does not start, open the app in Chrome or Safari. The PowerPoint library needs an internet connection the first time.</p>
+    </div>
+    <div style="height:70px"></div>
+  </div>
+</div>
+
+<div id="scanPage" class="fullpage">
+  <div class="quiz-top">
+    <button class="iconbtn" onclick="closeFull('scanPage')">×</button>
+    <div style="flex:1;min-width:0"><strong style="color:var(--green)">📷 Assignment Scanner</strong><br><small style="color:var(--muted)">Photo → AI help</small></div>
+  </div>
+  <div class="quiz-body">
+    <div class="note">Take a clear photo with the whole question visible. Check the result yourself, because handwriting, blurry images and diagrams can be misread.</div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" onclick="$('scanCamera').click()">📷 Take photo</button>
+      <button class="btn" onclick="$('scanGallery').click()">🖼 Choose image</button>
+    </div>
+    <input id="scanCamera" type="file" accept="image/*" capture="environment" class="hide" onchange="previewScan(event)">
+    <input id="scanGallery" type="file" accept="image/*" class="hide" onchange="previewScan(event)">
+    <img id="scanPreview" class="scan-preview" alt="Assignment preview">
+    <div class="field"><label>What should AI do?</label>
+      <select id="scanAction">
+        <option value="solve">Solve the questions step by step</option>
+        <option value="mark">Mark my answers and explain corrections</option>
+        <option value="explain">Explain each question in simple language</option>
+        <option value="transcribe">Transcribe the text only</option>
+        <option value="correct">Correct my written work</option>
+        <option value="teacher">Create a marking scheme for a teacher</option>
+      </select>
+    </div>
+    <div class="field"><label>Class / subject (optional)</label><input id="scanLevel" placeholder="e.g. Basic 8 Integrated Science"></div>
+    <div class="field"><label>Extra instructions (optional)</label><textarea id="scanNotes" rows="2" placeholder="e.g. answer question 1 to 5 only"></textarea></div>
+    <div class="row"><button class="primary" id="scanBtn" onclick="scanAssignment()" style="flex:2">🔍 Scan assignment</button><button class="btn" onclick="clearScanner()">Clear</button></div>
+    <p class="small" id="scanStatus"></p>
+    <div id="scanResult" class="rescard md hide"></div>
+    <div id="scanActions" class="row hide" style="margin-top:12px">
+      <button class="btn" onclick="copyEl('scanResult')">Copy</button>
+      <button class="btn" onclick="shareEl('scanResult','Assignment Scan')">Share</button>
+      <button class="btn" onclick="printEl('scanResult','Assignment Scan')">Print</button>
+      <button class="btn" onclick="downloadEl('scanResult','scan-result.txt')">Download</button>
+    </div>
+    <div style="height:70px"></div>
+  </div>
+</div>
+
+<button id="downBtn" onclick="scrollToBottom()" title="Go down">↓</button>
+<div class="composerwrap"><div class="composer">
+  <div id="fileName" title="Tap to remove"></div>
+  <textarea id="prompt" rows="1" placeholder="Write me a message..."></textarea>
+  <div class="controls">
+    <button class="iconbtn" id="attachBtn" title="Attach file or image">＋</button>
+    <button class="iconbtn" id="micBtn" title="Voice typing">🎙️</button>
+    <button class="iconbtn" id="speakBtn" title="Read last answer">♫</button>
+    <input type="file" id="fileInput" class="hide" accept=".txt,.md,.json,.csv,.html,.js,.css,image/*">
+    <span class="spacer"></span>
+    <button class="iconbtn" id="stopBtn" title="Stop">⏹</button>
+    <button class="primary send" id="sendBtn">↑</button>
+  </div>
+</div></div>
+
+<script>
+"use strict";
+/* NOTE: this script never contains literal page-structure tags. Some phone viewer apps cut the file at those. */
+
+/* ============ STORAGE ============ */
+const memStore={};
+function sGet(kind,key){try{return localStorage.getItem(key)}catch(e){return memStore[key]!==undefined?memStore[key]:null}}
+function sSet(kind,key,val){try{localStorage.setItem(key,val)}catch(e){memStore[key]=val}}
+function sDel(kind,key){try{localStorage.removeItem(key)}catch(e){delete memStore[key]}}
+
+/* ============ STATE ============ */
+const $=id=>document.getElementById(id);
+let apiKey=sGet("l","tsa_gemini_key")||"";
+let messages=[],attachedText="",attachedName="",attachedImage=null,activeController=null,lastAnswer="",currentChatId=Date.now();
+let quizData=[],quizAnswers={},quizConfig={},quizTimerInterval=null,quizTimeLeft=0,quizSubmitted=false,theoSelf={},quizState={objEarned:0,objTotal:0,theoTotal:0};
+let scanImage=null,deck={title:"",subtitle:"",slides:[]},slideIdx=0;
+const previewCodes={};let previewCounter=0;
+const FALLBACK_MODELS=["gemini-3.8-flash","gemini-3.6-flash"];
+
+/* ============ THEME (dark / light) ============ */
+function applyTheme(t){
+  document.documentElement.dataset.theme=t;
+  const m=document.querySelector('meta[name="theme-color"]');if(m)m.content=t==="light"?"#ffffff":"#061b16";
+  $("themeBtn").textContent=t==="light"?"🌙":"☀️";
+}
+function toggleTheme(){
+  const t=document.documentElement.dataset.theme==="light"?"dark":"light";
+  sSet("l","tsa_theme",t);applyTheme(t);
+}
+
+/* ============ INSTALL AS APP (single file, no extra files) ============ */
+let deferredPrompt=null;
+const isStandalone=()=>(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||window.navigator.standalone===true;
+function drawIcon(n){
+  const c=document.createElement("canvas");c.width=c.height=n;
+  const x=c.getContext("2d"),k=n/512;
+  x.fillStyle="#0b3d2e";x.fillRect(0,0,n,n);
+  x.fillStyle="#42e6ad";
+  x.fillRect(138*k,138*k,236*k,62*k);
+  x.fillRect(225*k,138*k,62*k,236*k);
+  return c.toDataURL("image/png");
+}
+try{
+  const base=location.href.split("#")[0].split("?")[0];
+  const manifest={
+    name:"Tender Sprout AI",short_name:"Tender AI",
+    id:base,start_url:base,scope:base.slice(0,base.lastIndexOf("/")+1),
+    display:"standalone",orientation:"portrait",
+    background_color:"#061b16",theme_color:"#061b16",
+    icons:[
+      {src:drawIcon(192),sizes:"192x192",type:"image/png",purpose:"any"},
+      {src:drawIcon(512),sizes:"512x512",type:"image/png",purpose:"any"}
+    ]
+  };
+  $("manifestLink").href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:"application/manifest+json"}));
+  const a=document.createElement("link");a.rel="apple-touch-icon";a.href=drawIcon(180);document.head.appendChild(a);
+  const f=document.createElement("link");f.rel="icon";f.href=drawIcon(192);document.head.appendChild(f);
+}catch(e){}
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e});
+window.addEventListener("appinstalled",()=>{$("installBtn").classList.add("hide");deferredPrompt=null});
+$("installBtn").onclick=async()=>{
+  if(deferredPrompt){deferredPrompt.prompt();try{await deferredPrompt.userChoice}catch(e){}deferredPrompt=null}
+  else openModal("installModal");
+};
+if(isStandalone())$("installBtn").classList.add("hide");
+
+/* ============ CURRICULUM DATA (suggestions only) ============ */
+const CLASS_LIST=["Basic 1","Basic 2","Basic 3","Basic 4","Basic 5","Basic 6","Basic 7 (JHS 1)","Basic 8 (JHS 2)","Basic 9 - BECE (JHS 3)"];
+const primarySubjects=["English Language","Mathematics","Science","History","Our World Our People (OWOP)","Ghanaian Language - Twi","French","Computing","RME","Creative Arts"];
+const jhsSubjects=["English Language","Mathematics","Science","Social Studies","History","RME","Creative Arts","Career Technology","Ghanaian Language - Twi","French","Computing"];
+function classNum(cls){const m=String(cls).match(/Basic\s*(\d)/);return m?Number(m[1]):0}
+function subjectsFor(cls){const n=classNum(cls);return n>=1&&n<=6?primarySubjects:jhsSubjects}
+const TOPICS={
+ "English Language":["Listening and speaking","Reading comprehension","Vocabulary development","Grammar and sentence construction","Writing a paragraph","Punctuation","Parts of speech","Story writing","Letter writing","Oral communication"],
+ "Mathematics":["Numbers and place value","Addition and subtraction","Multiplication and division","Fractions","Decimals","Measurement","Money","Time","Shapes and space","Perimeter and area","Patterns","Data handling","Ratio and proportion","Percentages","Algebra","Integers"],
+ "Science":["Living and non-living things","Plants and their uses","Animals and their habitats","The human body","Water and its uses","Air and the environment","Matter and materials","Forces and motion","Energy","Weather and climate","Soil","Food and nutrition","Ecosystems","Electricity","Photosynthesis","Health and sanitation"],
+ "History":["Our community's past","Important people in Ghana's history","The history of Ghana","Early settlements","Traditional leadership","The independence of Ghana","Historical sources","Trade and migration"],
+ "Social Studies":["The individual and the community","Our environment","Culture and identity","Leadership and citizenship","Ghana's natural resources","Population","Conflict prevention","National development","Rights and responsibilities","Map reading"],
+ "Our World Our People (OWOP)":["Our family","Our school","Our community","Our environment","Festivals and customs","Good citizenship","Weather and seasons","Healthy living"],
+ "Computing":["Parts of a computer","Uses of computers","Keyboard and mouse skills","Computer safety","Word processing","Internet safety","Algorithms and sequencing","Data and information","Programming concepts"],
+ "RME":["Respect and responsibility","Creation stories","Moral values","Worship and prayer","Religious leaders","Festivals","Peace and tolerance","Honesty","Care for others"],
+ "Creative Arts":["Elements of art","Lines, shapes and colours","Drawing and painting","Pattern making","Music and rhythm","Drama and role play","Dance","Local crafts"],
+ "French":["Greetings","Introducing oneself","Numbers","Family","School objects","Days and months","Colours","Food and drinks","Daily activities"],
+ "Ghanaian Language - Twi":["Nkyia ne nkɔmmɔbɔ","Abusua","Akyerɛw ne akenkan","Mmebusɛm","Amammerɛ","Nsɛmfua ne kasamu","Anansesɛm"],
+ "Career Technology":["Safety in the workshop","Tools and equipment","Materials and their uses","Food and nutrition","Personal hygiene","Design and making","Basic construction","Entrepreneurship","Textiles and clothing"]
+};
+const STRANDS={
+ "English Language":["Oral Language","Reading","Writing","Grammar","Literature"],
+ "Science":["Diversity of Matter","Cycles","Systems","Forces and Energy","Humans and the Environment"],
+ "Mathematics":["Number","Algebra","Geometry and Measurement","Data"],
+ "History":["History as a Discipline","Ghana's History","People and Places","Culture and Heritage"],
+ "Social Studies":["Environment","Governance, Politics and Stability","Social and Economic Development","Culture and National Identity"],
+ "Computing":["Introduction to Computing","Productivity Software","Communication Networks","Computational Thinking","Robotics and Emerging Technologies"],
+ "RME":["God, His Creation and Attributes","Religious Practices and Their Moral Implications","Religious Leaders","Religious Festivals"],
+ "Creative Arts":["Visual Arts","Performing Arts","Creative Expression"],
+ "French":["Oral Communication","Reading","Writing","Language Structures"],
+ "Ghanaian Language - Twi":["Tie na Ka","Kenkan","Kyerɛw","Kasadwini","Amammerɛ"],
+ "Career Technology":["Designing and Making","Materials","Tools and Equipment","Food and Nutrition","Safety and Entrepreneurship"]
+};
+const SUBSTRANDS={
+ "Oral Language":["Listening","Speaking","Conversation","Pronunciation"],
+ "Reading":["Reading fluently","Reading comprehension","Vocabulary","Literature reading"],
+ "Writing":["Handwriting","Sentence writing","Paragraph writing","Creative writing"],
+ "Grammar":["Parts of speech","Sentence structure","Punctuation"],
+ "Diversity of Matter":["Living things","Non-living things","Materials","Mixtures"],
+ "Cycles":["Life cycles","Water cycle","Seasonal changes"],
+ "Systems":["The human body","Plant systems","Ecosystems"],
+ "Forces and Energy":["Movement","Simple machines","Light and sound","Electricity"],
+ "Humans and the Environment":["Health","Sanitation","Natural resources","Pollution"],
+ "Number":["Counting and place value","Operations","Fractions","Decimals"],
+ "Algebra":["Patterns","Expressions","Equations"],
+ "Geometry and Measurement":["Shapes","Length and distance","Time","Area and perimeter"],
+ "Data":["Collecting data","Tables and charts","Interpreting data"],
+ "Introduction to Computing":["Computer parts","Computer operations","Digital safety"],
+ "Visual Arts":["Drawing","Painting","Pattern","Craft"],
+ "Performing Arts":["Music","Dance","Drama"],
+ "Designing and Making":["Design process","Planning","Making products"],
+ "Materials":["Properties of materials","Selecting materials","Material care"]
+};
+const GENERIC_STRANDS=["General concepts","Knowledge and understanding","Skills and application"];
+const GENERIC_SUBSTRANDS=["Knowledge and understanding","Practical activities","Application to everyday life"];
+
+/* ============ BASIC HELPERS ============ */
+function escapeHTML(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function escapeAttr(s){return escapeHTML(s).replace(/`/g,"&#96;")}
+function safeUrl(s){try{const u=new URL(s);return ["http:","https:"].includes(u.protocol)?u.href:"#"}catch(e){return "#"}}
+function setStatus(t,c){$("status").textContent=t;$("status").style.color=c||"var(--muted)"}
+function flash(t){const old=$("status").textContent,oc=$("status").style.color;setStatus(t,"var(--green)");setTimeout(()=>{if($("status").textContent===t)setStatus(old,oc)},1800)}
+function getKey(){return apiKey||sGet("l","tsa_gemini_key")||""}
+function scrollToBottom(){$("mainScroll").scrollTo({top:$("mainScroll").scrollHeight,behavior:"smooth"})}
+$("mainScroll").addEventListener("scroll",()=>{const el=$("mainScroll");$("downBtn").classList.toggle("show",el.scrollTop<el.scrollHeight-el.clientHeight-300)});
+function copyText(text){
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(()=>flash("Copied")).catch(()=>fallbackCopy(text))}
+  else fallbackCopy(text);
+}
+function fallbackCopy(text){
+  const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand("copy");flash("Copied")}catch(e){flash("Copy not available")}
+  ta.remove();
+}
+function shareText(t,title){
+  if(navigator.share){navigator.share({title:title||"Tender Sprout AI",text:t}).catch(()=>{})}
+  else copyText(t);
+}
+function copyEl(id){copyText($(id).innerText)}
+function shareEl(id,title){shareText($(id).innerText,title)}
+function downloadText(f,t){const b=new Blob([t],{type:"text/plain"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=f;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
+function downloadEl(id,name){downloadText(name,$(id).innerText)}
+/* Print: page tags are built from pieces so viewer apps cannot cut the file */
+function printHTML(html,title){
+  const w=window.open("","_blank");if(!w){alert("Allow pop-ups to print.");return}
+  const L="<",E="</";
+  const css="body{font-family:Arial;padding:24px;line-height:1.5}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:6px;text-align:left;vertical-align:top}pre{background:#f3f3f3;padding:10px;white-space:pre-wrap}button{display:none}";
+  w.document.write(L+"html>"+L+"head>"+L+"title>"+escapeHTML(title)+E+"title>"+L+"style>"+css+E+"style>"+E+"head>"+L+"body>"+html+E+"body>"+E+"html>");
+  w.document.close();w.focus();w.print();
+}
+function printEl(id,title){const src=typeof id==="string"?$(id):id;printHTML(src.innerHTML,title)}
+
+/* ============ MODALS / PAGES ============ */
+function refreshOverlay(){const any=document.querySelector(".modal.open")||$("sidebar").classList.contains("open");$("overlay").classList.toggle("show",!!any)}
+function openSidebar(){$("sidebar").classList.add("open");refreshOverlay()}
+function closeSidebar(){$("sidebar").classList.remove("open");refreshOverlay()}
+function openModal(id){closeAllModals();$(id).classList.add("open");refreshOverlay();if(id==="historyModal")showHistory()}
+function closeModal(id){$(id).classList.remove("open");refreshOverlay()}
+function closeAllModals(){document.querySelectorAll(".modal").forEach(m=>m.classList.remove("open"));$("sidebar").classList.remove("open");refreshOverlay()}
+function openFull(id){closeAllModals();$(id).classList.add("open")}
+function closeFull(id){$(id).classList.remove("open")}
+
+/* ============ MARKDOWN ============ */
+function inlineMarkdown(s){
+  const stash=[];
+  const keep=html=>{stash.push(html);return "\u0001"+(stash.length-1)+"\u0001"};
+  let out=escapeHTML(s);
+  out=out.replace(/`([^`\n]+)`/g,(_,c)=>keep("<code>"+c+"</code>"));
+  out=out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,(_,t,u)=>keep('<a href="'+escapeAttr(safeUrl(u.replace(/&amp;/g,"&")))+'" target="_blank" rel="noopener">'+t+"</a>"));
+  out=out.replace(/(https?:\/\/[^\s<\u0001]+)/g,m=>{
+    const trail=(m.match(/[.,;:!?)]+$/)||[""])[0];
+    const url=trail?m.slice(0,-trail.length):m;
+    return keep('<a href="'+escapeAttr(safeUrl(url.replace(/&amp;/g,"&")))+'" target="_blank" rel="noopener">'+url+"</a>")+trail;
+  });
+  out=out.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+  out=out.replace(/(^|[^\w])__(.+?)__(?=[^\w]|$)/g,"$1<strong>$2</strong>");
+  out=out.replace(/(^|[^*\w])\*([^\s*][^*]*?)\*(?=[^*\w]|$)/g,"$1<em>$2</em>");
+  out=out.replace(/(^|[^\w])_([^\s_][^_]*?)_(?=[^\w]|$)/g,"$1<em>$2</em>");
+  out=out.replace(/\u0001(\d+)\u0001/g,(_,i)=>stash[Number(i)]);
+  return out;
+}
+const PREVIEW_START=new RegExp("^<(!doctype|h"+"tml|svg)","i");
+function renderMarkdown(src){
+  const blocks=[];
+  src=String(src||"").replace(/\r/g,"");
+  src=src.replace(/```([a-zA-Z0-9_+#-]*)[ \t]*\n?([\s\S]*?)```/g,(_,lang,code)=>{
+    const id="code"+(++previewCounter);previewCodes[id]=code;
+    blocks.push({id,lang:lang||"code",code});
+    return "\n@@CODE"+(blocks.length-1)+"@@\n";
+  });
+  const lines=src.split("\n"),out=[];
+  let inUl=false,inOl=false,inTable=false,rows=[];
+  function closeLists(){if(inUl){out.push("</ul>");inUl=false}if(inOl){out.push("</ol>");inOl=false}}
+  function flushTable(){
+    if(!inTable)return;
+    const r=rows.filter(x=>!x.every(c=>/^:?-{2,}:?$/.test(c.trim())));
+    if(r.length){
+      out.push("<table><tbody>");
+      r.forEach((row,i)=>out.push("<tr>"+row.map(c=>i===0?"<th>"+inlineMarkdown(c.trim())+"</th>":"<td>"+inlineMarkdown(c.trim())+"</td>").join("")+"</tr>"));
+      out.push("</tbody></table>");
+    }
+    inTable=false;rows=[];
+  }
+  for(const line of lines){
+    const cm=line.match(/^@@CODE(\d+)@@$/);
+    if(cm){
+      closeLists();flushTable();
+      const b=blocks[Number(cm[1])];
+      const canPreview=/^(html|htm|svg)$/i.test(b.lang)||PREVIEW_START.test(b.code.trim());
+      out.push('<div class="codebox"><div class="codehead"><span>'+escapeHTML(b.lang)+'</span><span><button onclick="copyCode(\''+b.id+'\')">Copy</button> <button onclick="shareCode(\''+b.id+'\')">Share</button>'+(canPreview?' <button onclick="previewCode(\''+b.id+'\')">▶ Preview</button>':"")+'</span></div><pre><code>'+escapeHTML(b.code)+'</code></pre><div id="preview-'+b.id+'"></div></div>');
+      continue;
+    }
+    if(/^\s*\|.*\|\s*$/.test(line)){closeLists();inTable=true;rows.push(line.trim().replace(/^\||\|$/g,"").split("|"));continue}
+    else flushTable();
+    if(!line.trim()){closeLists();continue}
+    let m;
+    if((m=line.match(/^(#{1,4})\s+(.+)$/))){closeLists();out.push("<h"+m[1].length+">"+inlineMarkdown(m[2])+"</h"+m[1].length+">");continue}
+    if((m=line.match(/^\s*[-*+]\s+(.+)$/))){if(inOl){out.push("</ol>");inOl=false}if(!inUl){out.push("<ul>");inUl=true}out.push("<li>"+inlineMarkdown(m[1])+"</li>");continue}
+    if((m=line.match(/^\s*\d+[.)]\s+(.+)$/))){if(inUl){out.push("</ul>");inUl=false}if(!inOl){out.push("<ol>");inOl=true}out.push("<li>"+inlineMarkdown(m[1])+"</li>");continue}
+    closeLists();
+    if(/^(---+|\*\*\*+)$/.test(line.trim())){out.push("<hr>");continue}
+    if(/^>\s?/.test(line)){out.push("<blockquote>"+inlineMarkdown(line.replace(/^>\s?/,""))+"</blockquote>");continue}
+    out.push("<p>"+inlineMarkdown(line)+"</p>");
+  }
+  closeLists();flushTable();
+  return out.join("");
+}
+function copyCode(id){copyText(previewCodes[id]||"")}
+function shareCode(id){shareText(previewCodes[id]||"","Code")}
+function previewCode(id){
+  const holder=$("preview-"+id);if(!holder)return;
+  if(holder.innerHTML){holder.innerHTML="";return}
+  const f=document.createElement("iframe");f.className="preview-frame";f.setAttribute("sandbox","allow-scripts");
+  holder.appendChild(f);f.srcdoc=previewCodes[id]||"";
+}
+
+/* ============ GEMINI CALL ============ */
+function friendlyError(msg,status){
+  if(status===400&&/api key/i.test(msg))return "Your API key looks invalid. Open Settings and paste it again.";
+  if(status===403)return "Access denied. Check that your API key is valid and the Gemini API is enabled for it.";
+  if(status===404)return "That model was not found. Choose another model.";
+  if(status===429)return "Too many requests or quota reached. Wait a minute and try again.";
+  if(status>=500)return "The Gemini service is busy. Wait a moment and try again.";
+  return msg;
+}
+async function callGemini(o){
+  const key=getKey();if(!key)throw new Error("Add your API key first (open Settings).");
+  const chosen=o.model||$("model").value;
+  const list=[...new Set([chosen].concat(FALLBACK_MODELS))];
+  let lastErr=null;
+  for(const m of list){
+    try{
+      const body={contents:o.contents,generationConfig:{maxOutputTokens:16384}};
+      if(o.system)body.systemInstruction={parts:[{text:o.system}]};
+      const r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(m)+":generateContent",{
+        method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify(body),signal:o.signal
+      });
+      let data={};try{data=await r.json()}catch(e){}
+      if(!r.ok){const er=new Error(friendlyError((data&&data.error&&data.error.message)||("HTTP "+r.status),r.status));er.status=r.status;throw er}
+      if(data.promptFeedback&&data.promptFeedback.blockReason)throw new Error("The request was blocked ("+data.promptFeedback.blockReason+"). Try rewording it.");
+      const text=((data.candidates&&data.candidates[0]&&data.candidates[0].content&&data.candidates[0].content.parts)||[]).filter(p=>!p.thought).map(p=>p.text||"").join("\n").trim();
+      if(!text)throw new Error("The model returned no text. Try again.");
+      return text;
+    }catch(e){
+      if(e.name==="AbortError")throw e;
+      if(e instanceof TypeError){throw new Error("Network error. Check your internet connection.")}
+      lastErr=e;
+      if(e.status===400||e.status===401||e.status===403)break;
+    }
+  }
+  throw lastErr||new Error("Request failed.");
+}
+async function request(o){
+  if(activeController)throw new Error("Please wait for the current request to finish.");
+  activeController=new AbortController();
+  try{return await callGemini(Object.assign({},o,{signal:activeController.signal}))}
+  finally{activeController=null}
+}
+
+/* ============ CHAT ============ */
+function addMessage(role,text){
+  $("welcome").classList.add("hide");
+  const box=document.createElement("article");box.className="msg "+(role==="user"?"user":"ai");
+  const who=document.createElement("div");who.className="who";who.textContent=role==="user"?"YOU":"TENDER SPROUT AI";
+  const body=document.createElement("div");body.className="result md";
+  body.innerHTML=role==="user"?escapeHTML(text).replace(/\n/g,"<br>"):renderMarkdown(text);
+  box.append(who,body);
+  if(role==="model"){
+    const a=document.createElement("div");a.className="msg-actions";
+    const mk=(label,fn)=>{const b=document.createElement("button");b.className="btn";b.textContent=label;b.onclick=()=>fn(b);return b};
+    a.append(
+      mk("Copy",b=>{copyText(body.innerText);b.textContent="Copied!"}),
+      mk("Share",()=>shareText(body.innerText)),
+      mk("Print",()=>printEl(body,"Answer")),
+      mk("Read aloud",()=>speakText(text)),
+      mk("Download",()=>downloadText("answer.txt",body.innerText))
+    );
+    box.appendChild(a);lastAnswer=text;
+  }
+  $("chat").appendChild(box);scrollToBottom();return box;
+}
+function saveCurrentChat(){
+  try{
+    let all=JSON.parse(sGet("l","tsa_chats")||"[]");if(!Array.isArray(all))all=[];
+    const slim=messages.map(m=>({role:m.role,parts:m.parts.filter(p=>typeof p.text==="string").map(p=>({text:p.text}))})).filter(m=>m.parts.length);
+    const first=slim.find(m=>m.role==="user");
+    const title=((first&&first.parts[0]&&first.parts[0].text)||"New chat").slice(0,48);
+    all=all.filter(c=>c.id!==currentChatId);all.unshift({id:currentChatId,title,updated:Date.now(),messages:slim});
+    sSet("l","tsa_chats",JSON.stringify(all.slice(0,30)));
+  }catch(e){}
+}
+async function researchWeb(q){
+  if(!$("researchToggle").checked)return "";
+  let info="";
+  try{const wiki=await fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(q)).then(r=>r.ok?r.json():null);if(wiki&&wiki.extract)info+="Wikipedia: "+wiki.extract+"\n"}catch(e){}
+  return info?"\n[WEB RESEARCH]:\n"+info+"\n\n":"";
+}
+const CHAT_SYSTEM="You are Tender Sprout AI, a friendly, practical assistant. Use clear headings, bold key terms, lists and tables when useful. For Ghana education requests use Ghanaian/British English and support the NaCCA curriculum; never invent official curriculum codes or claim questions are real past exam questions. For code, wrap HTML in a fenced block marked html.";
+async function sendMessage(prefill){
+  if(activeController)return;
+  const text=(prefill!==undefined?prefill:$("prompt").value).trim();
+  if(!text&&!attachedText&&!attachedImage)return;
+  if(!getKey()){openModal("settingsModal");$("keyMessage").textContent="Add API key first!";setStatus("Add API key","var(--danger)");return}
+  let userText=text||"Please examine the attached file.";
+  if(attachedText)userText+="\n\nAttached file "+attachedName+":\n"+attachedText;
+  const parts=[{text:userText}];
+  const img=attachedImage;
+  if(img)parts.push({inlineData:img});
+  const shown=userText+(img?"\n[Image attached: "+attachedName+"]":"");
+  $("prompt").value="";$("prompt").style.height="auto";clearAttachment();
+  messages.push({role:"user",parts});
+  addMessage("user",shown);
+  $("sendBtn").disabled=true;
+  const loading=document.createElement("div");loading.className="thinking";
+  loading.innerHTML='<div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><span style="color:var(--green)">Thinking...</span>';
+  $("chat").appendChild(loading);scrollToBottom();
+  try{
+    const webInfo=await researchWeb(userText.slice(0,80));
+    const last=messages[messages.length-1];
+    const apiLast={role:"user",parts:[{text:webInfo+last.parts[0].text}].concat(last.parts.slice(1))};
+    const contents=messages.slice(0,-1).concat([apiLast]);
+    const answer=await request({contents,system:CHAT_SYSTEM});
+    loading.remove();
+    messages.push({role:"model",parts:[{text:answer}]});
+    addMessage("model",answer);saveCurrentChat();setStatus("Ready","var(--green)");
+  }catch(err){
+    loading.remove();messages.pop();
+    if(err.name==="AbortError"){setStatus("Stopped","var(--muted)")}
+    else{addMessage("model","**Error:** "+err.message);setStatus("Error","var(--danger)")}
+  }finally{$("sendBtn").disabled=false}
+}
+$("sendBtn").onclick=()=>sendMessage();
+$("prompt").addEventListener("keydown",e=>{if(e.ctrlKey&&e.key==="Enter"){e.preventDefault();sendMessage()}});
+$("prompt").addEventListener("input",()=>{const p=$("prompt");p.style.height="auto";p.style.height=Math.min(p.scrollHeight,150)+"px"});
+$("stopBtn").onclick=()=>{if(activeController)activeController.abort();if("speechSynthesis" in window)speechSynthesis.cancel()};
+function newChat(){if(messages.length)saveCurrentChat();messages=[];currentChatId=Date.now();$("chat").innerHTML="";$("welcome").classList.remove("hide");clearAttachment();closeAllModals();["lessonPage","scanPage","quizPage","slidesPage"].forEach(closeFull)}
+document.querySelectorAll("[data-prompt]").forEach(b=>{b.onclick=()=>{$("prompt").value=b.dataset.prompt;$("prompt").focus()}});
+
+/* ---- settings ---- */
+$("showKeyBtn").onclick=()=>{const f=$("apiKey");f.type=f.type==="password"?"text":"password"};
+$("saveKeyBtn").onclick=()=>{
+  const k=$("apiKey").value.trim(),m=$("customModel").value.trim();
+  if(!k&&!m){$("keyMessage").textContent="Paste a key or a model ID first.";return}
+  if(k){apiKey=k;sSet("l","tsa_gemini_key",k);$("apiKey").value="";setStatus("Key ready","var(--green)")}
+  if(m){let o=[...$("model").options].find(x=>x.value===m);if(!o){o=new Option(m,m);$("model").add(o)}$("model").value=m}
+  $("keyMessage").textContent="✅ Saved! You will not be asked again.";
+  setTimeout(()=>closeModal("settingsModal"),800);
+};
+$("removeKeyBtn").onclick=()=>{apiKey="";sDel("l","tsa_gemini_key");setStatus("Add API key","var(--danger)");$("keyMessage").textContent="Removed"};
+
+/* ---- attachments ---- */
+function fileToDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file)})}
+async function fileToImagePart(file){
+  const raw=await fileToDataURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=raw});
+    const max=1600,w=img.naturalWidth,h=img.naturalHeight,scale=Math.min(1,max/Math.max(w,h));
+    if(scale<1||file.size>1500000){
+      const c=document.createElement("canvas");c.width=Math.round(w*scale);c.height=Math.round(h*scale);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+      const out=c.toDataURL("image/jpeg",0.85);
+      return {part:{mimeType:"image/jpeg",data:out.split(",")[1]},preview:out};
+    }
+  }catch(e){}
+  return {part:{mimeType:file.type||"image/jpeg",data:raw.split(",")[1]},preview:raw};
+}
+function clearAttachment(){attachedText="";attachedName="";attachedImage=null;$("fileName").textContent=""}
+$("fileName").onclick=clearAttachment;
+$("attachBtn").onclick=()=>$("fileInput").click();
+$("fileInput").onchange=async()=>{
+  const f=$("fileInput").files&&$("fileInput").files[0];if(!f)return;
+  attachedName=f.name;attachedText="";attachedImage=null;
+  try{
+    if(f.type.startsWith("image/")){const r=await fileToImagePart(f);attachedImage=r.part;$("fileName").textContent="📸 "+f.name+" (tap to remove)"}
+    else{
+      if(f.size>500000){alert("File too large. Use a smaller text file.");$("fileInput").value="";return}
+      attachedText=await f.text();$("fileName").textContent="📎 "+f.name+" (tap to remove)";
+    }
+  }catch(e){alert("Could not read that file.")}
+  $("fileInput").value="";
+};
+
+/* ---- voice ---- */
+let rec=null;
+$("micBtn").onclick=()=>{
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert("Voice typing is not supported in this browser.");return}
+  if(rec){rec.stop();return}
+  rec=new SR();rec.lang="en-GH";
+  rec.onresult=e=>{let r="";for(let i=e.resultIndex;i<e.results.length;i++)r+=e.results[i][0].transcript;$("prompt").value=r};
+  rec.onend=()=>{rec=null};rec.onerror=()=>{rec=null};
+  try{rec.start()}catch(e){rec=null}
+};
+function speakText(t){
+  if(!("speechSynthesis" in window)){flash("Read aloud not supported");return}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(String(t).replace(/[*#`_>|]/g,""));u.lang="en-GB";speechSynthesis.speak(u);
+}
+$("speakBtn").onclick=()=>{if(lastAnswer)speakText(lastAnswer)};
+
+/* ============ TOOLS (Twi/French, Code Preview) ============ */
+function openTool(type){
+  openModal("toolsModal");const area=$("toolArea");area.innerHTML="";const title=$("toolTitle");
+  const form=(t,fields,runLabel,fn)=>{
+    title.textContent=t;area.innerHTML="";
+    fields.forEach(f=>{
+      const w=document.createElement("div");w.className="field";
+      const l=document.createElement("label");l.textContent=f.label;
+      const el=document.createElement(f.type==="textarea"?"textarea":"input");el.id="tool_"+f.id;el.placeholder=f.placeholder||"";
+      if(f.type!=="textarea")el.type=f.type||"text";
+      w.append(l,el);area.appendChild(w);
+    });
+    const b=document.createElement("button");b.className="primary";b.textContent=runLabel;b.style.marginTop="10px";
+    b.onclick=()=>fn(Object.fromEntries(fields.map(f=>[f.id,$("tool_"+f.id).value])));area.appendChild(b);
+  };
+  if(type==="code"){form("Code Preview",[{id:"desc",label:"What to build?",type:"textarea",placeholder:"Calculator..."}],"Generate",v=>{closeModal("toolsModal");sendMessage("Create a complete single-file HTML website for: "+v.desc+". Put all the code in one fenced block marked html.")})}
+  else if(type==="twi"){form("Twi / French",[{id:"text",label:"English",type:"textarea",placeholder:"Hello"},{id:"lang",label:"To (Twi/French)",placeholder:"Twi"}],"Translate",v=>{closeModal("toolsModal");sendMessage("Translate to "+v.lang+": "+v.text)})}
+}
+
+/* ============ SUBJECT / TOPIC HELPERS ============ */
+function fillClassSelect(id,placeholder){
+  $(id).innerHTML=(placeholder?'<option value="">-- Select Class --</option>':"")+CLASS_LIST.map(c=>'<option value="'+escapeAttr(c)+'">'+escapeHTML(c)+"</option>").join("");
+}
+function fillSubjectSelect(id,cls,placeholder){
+  const list=subjectsFor(cls),old=$(id).value;
+  $(id).innerHTML=(placeholder?'<option value="">-- Select Subject --</option>':"")+list.map(s=>'<option value="'+escapeAttr(s)+'">'+escapeHTML(s)+"</option>").join("");
+  if(list.includes(old))$(id).value=old;
+}
+function showTopicSuggestions(subject,containerId,inputId){
+  const c=$(containerId);c.innerHTML="";
+  (TOPICS[subject]||[]).forEach(t=>{const chip=document.createElement("div");chip.className="chip";chip.textContent=t;chip.onclick=()=>{$(inputId).value=t};c.appendChild(chip)});
+}
+
+/* ============ LESSON PLAN ============ */
+function updateLessonSubjects(){fillSubjectSelect("lpSubject",$("lpClass").value,false);updateLessonSubject()}
+function updateLessonSubject(){
+  const s=$("lpSubject").value;
+  $("lpStrandList").innerHTML=(STRANDS[s]||GENERIC_STRANDS).map(x=>'<option value="'+escapeAttr(x)+'"></option>').join("");
+  $("lpStrand").value="";$("lpSubstrand").value="";updateSubstrandList();
+  showTopicSuggestions(s,"lpTopicChips","lpTopic");
+}
+function updateSubstrandList(){
+  const items=SUBSTRANDS[$("lpStrand").value.trim()]||GENERIC_SUBSTRANDS;
+  $("lpSubstrandList").innerHTML=items.map(x=>'<option value="'+escapeAttr(x)+'"></option>').join("");
+}
+function clearLesson(){
+  ["lpTopic","lpWeek","lpLearners","lpExtra","lpStrand","lpSubstrand"].forEach(id=>$(id).value="");
+  $("lessonResult").classList.add("hide");$("lessonResult").innerHTML="";$("lessonActions").classList.add("hide");$("lessonStatus").textContent="";
+}
+async function generateLesson(){
+  const cls=$("lpClass").value,subject=$("lpSubject").value,topic=$("lpTopic").value.trim();
+  if(!topic){alert("Please enter or choose a lesson topic.");$("lpTopic").focus();return}
+  if(!getKey()){openModal("settingsModal");$("keyMessage").textContent="Add API key first!";return}
+  const strand=$("lpStrand").value.trim()||"Not specified (suggest the most suitable strand)";
+  const sub=$("lpSubstrand").value.trim()||"Not specified (suggest the most suitable sub-strand)";
+  const prompt=`Create a detailed, practical Ghana GES/NaCCA-aligned lesson plan.
+Class: ${cls}
+Subject: ${subject}
+Topic: ${topic}
+Suggested strand: ${strand}
+Suggested sub-strand: ${sub}
+Term: ${$("lpTerm").value}
+Week/lesson: ${$("lpWeek").value||"Not specified"}
+Duration: ${$("lpDuration").value}
+Number of learners: ${$("lpLearners").value||"Not specified"}
+Additional context/resources: ${$("lpExtra").value||"Not specified"}
+
+Use clear Markdown headings and a teacher-friendly format. Include:
+1. Lesson identification details
+2. Relevant curriculum link and content standard/indicator if known
+3. Learning objectives measurable by the end of the lesson
+4. Core competencies and values
+5. Teaching/learning resources
+6. Prior knowledge
+7. Starter/revision
+8. Introduction
+9. Lesson development in a table with stages/time, teacher activities, learner activities and key questions
+10. Differentiation/inclusion
+11. Assessment with sample questions/tasks and expected answers
+12. Summary/conclusion
+13. Homework/follow-up
+14. Teacher reflection/evaluation.
+Important: Do not invent official NaCCA codes, content standards or indicators. If you cannot verify the exact official wording, clearly label it as a suggested alignment and tell the teacher to check the current official curriculum. Keep activities suitable for ${cls} and use Ghanaian classroom examples.`;
+  $("lessonBtn").disabled=true;$("lessonStatus").textContent="Generating… this can take up to a minute.";
+  $("lessonActions").classList.add("hide");
+  try{
+    const text=await request({contents:[{role:"user",parts:[{text:prompt}]}],system:"You are an experienced Ghanaian basic-school teacher and lesson-planning assistant. Make useful, realistic lesson plans. Never invent official NaCCA codes or pretend an unverified strand/indicator is official."});
+    $("lessonResult").innerHTML=renderMarkdown(text);$("lessonResult").classList.remove("hide");$("lessonActions").classList.remove("hide");
+    $("lessonStatus").textContent="Done. Check the curriculum details before using.";
+  }catch(e){$("lessonStatus").textContent=e.name==="AbortError"?"Stopped.":"Failed: "+e.message}
+  finally{$("lessonBtn").disabled=false}
+}
+
+/* ============ POWERPOINT SLIDES ============ */
+const THEMES={
+ green:{bg:"0B3D2E",title:"42E6AD",text:"EEF9F4",accent:"42E6AD"},
+ blue:{bg:"0F2A4A",title:"7FC4FF",text:"F0F6FF",accent:"3B9BFF"},
+ purple:{bg:"2A1650",title:"D2B3FF",text:"F6F0FF",accent:"A56BFF"},
+ dark:{bg:"15191C",title:"FFFFFF",text:"DDE3E7",accent:"42E6AD"},
+ light:{bg:"FFFFFF",title:"0A7A56",text:"222222",accent:"0A7A56"}
+};
+function clearSlides(){deck={title:"",subtitle:"",slides:[]};slideIdx=0;$("spTopic").value="";$("spExtra").value="";$("slidesOut").classList.add("hide");$("slidesStatus").textContent=""}
+async function generateSlides(){
+  const topic=$("spTopic").value.trim();
+  if(!topic){alert("Enter a topic for the slides.");$("spTopic").focus();return}
+  if(!getKey()){openModal("settingsModal");$("keyMessage").textContent="Add API key first!";return}
+  const n=Number($("spNum").value);
+  const prompt=`Create a PowerPoint slide deck as STRICT JSON only. No text outside the JSON.
+Topic: ${topic}
+Audience: ${$("spClass").value} learners in Ghana (use Ghanaian examples where suitable)
+Number of content slides: exactly ${n} (do not count the title slide)
+Style: ${$("spStyle").value}
+Extra instructions: ${$("spExtra").value||"None"}
+Return this shape:
+{"title":"Deck title","subtitle":"Short subtitle","slides":[{"title":"Slide title","bullets":["Point 1","Point 2","Point 3"],"notes":"Speaker notes for the teacher"}]}
+Rules: 3 to 5 short bullets per slide (under 14 words each), no markdown symbols, no numbering in titles, a final summary slide, speaker notes of 1 to 3 sentences. Return ONLY the JSON object.`;
+  $("slidesBtn").disabled=true;$("slidesStatus").textContent="⏳ Generating slides…";$("slidesOut").classList.add("hide");
+  try{
+    const text=await request({contents:[{role:"user",parts:[{text:prompt}]}],system:"You create clear, accurate teaching slide decks. Return valid JSON only."});
+    const m=text.replace(/```json/gi,"").replace(/```/g,"").match(/\{[\s\S]*\}/);
+    if(!m)throw new Error("The AI reply was not valid JSON. Tap Generate again.");
+    let o;try{o=JSON.parse(m[0])}catch(e){throw new Error("The AI reply was not valid JSON. Tap Generate again.")}
+    const list=(Array.isArray(o.slides)?o.slides:[]).filter(s=>s&&s.title).map(s=>({title:String(s.title),bullets:(Array.isArray(s.bullets)?s.bullets:[]).map(String),notes:String(s.notes||"")}));
+    if(!list.length)throw new Error("No slides were returned. Tap Generate again.");
+    deck={title:String(o.title||topic),subtitle:String(o.subtitle||""),slides:list};slideIdx=0;
+    $("slidesStatus").textContent="Done. "+list.length+" slides plus a title slide.";$("slidesOut").classList.remove("hide");renderSlide();
+  }catch(e){$("slidesStatus").textContent=e.name==="AbortError"?"Stopped.":"❌ "+e.message}
+  finally{$("slidesBtn").disabled=false}
+}
+function renderSlide(){
+  if(!deck.slides.length)return;
+  const t=THEMES[$("spTheme").value]||THEMES.green,total=deck.slides.length+1,v=$("slideView");
+  const st="background:#"+t.bg+";color:#"+t.text;
+  if(slideIdx===0){
+    v.innerHTML='<div class="slide title" style="'+st+'"><h2 style="color:#'+t.title+'">'+escapeHTML(deck.title)+"</h2><p>"+escapeHTML(deck.subtitle)+"</p></div>";
+    $("slideNotes").textContent="";
+  }else{
+    const d=deck.slides[slideIdx-1];
+    v.innerHTML='<div class="slide" style="'+st+';border-left:8px solid #'+t.accent+'"><h2 style="color:#'+t.title+'">'+escapeHTML(d.title)+"</h2><ul>"+d.bullets.map(b=>"<li>"+escapeHTML(b)+"</li>").join("")+"</ul></div>";
+    $("slideNotes").textContent=d.notes?"Notes: "+d.notes:"";
+  }
+  $("slideCount").textContent="Slide "+(slideIdx+1)+" of "+total;
+}
+function slideGo(d){const total=deck.slides.length+1;slideIdx=Math.max(0,Math.min(total-1,slideIdx+d));renderSlide()}
+function deckText(){
+  let s=deck.title+"\n"+deck.subtitle+"\n";
+  deck.slides.forEach((d,i)=>{s+="\nSlide "+(i+1)+": "+d.title+"\n"+d.bullets.map(b=>"- "+b).join("\n")+"\n"});
+  return s;
+}
+function printDeck(){
+  let h="<h1>"+escapeHTML(deck.title)+"</h1><p>"+escapeHTML(deck.subtitle)+"</p>";
+  deck.slides.forEach((d,i)=>{h+="<h2>"+(i+1)+". "+escapeHTML(d.title)+"</h2><ul>"+d.bullets.map(b=>"<li>"+escapeHTML(b)+"</li>").join("")+"</ul>"+(d.notes?"<p><em>Notes: "+escapeHTML(d.notes)+"</em></p>":"")});
+  printHTML(h,deck.title);
+}
+function downloadPptx(){
+  if(typeof PptxGenJS==="undefined"){alert("The PowerPoint library did not load. Connect to the internet and reload the page.");return}
+  try{
+    const t=THEMES[$("spTheme").value]||THEMES.green,p=new PptxGenJS();p.layout="LAYOUT_16x9";p.title=deck.title;
+    let s=p.addSlide();s.background={color:t.bg};
+    s.addText(deck.title,{x:.6,y:1.6,w:8.8,h:1.6,fontSize:36,bold:true,color:t.title,align:"center",valign:"middle",fontFace:"Arial"});
+    s.addText(deck.subtitle||"",{x:.6,y:3.3,w:8.8,h:.8,fontSize:18,color:t.text,align:"center",fontFace:"Arial"});
+    deck.slides.forEach(d=>{
+      s=p.addSlide();s.background={color:t.bg};
+      s.addShape(p.ShapeType.rect,{x:0,y:0,w:.25,h:5.625,fill:{color:t.accent},line:{color:t.accent}});
+      s.addText(d.title,{x:.6,y:.35,w:8.8,h:.9,fontSize:28,bold:true,color:t.title,fontFace:"Arial"});
+      s.addText(d.bullets.map(b=>({text:b,options:{bullet:true,breakLine:true}})),{x:.6,y:1.4,w:8.8,h:3.8,fontSize:20,color:t.text,valign:"top",paraSpaceAfter:8,fontFace:"Arial"});
+      if(d.notes)s.addNotes(d.notes);
+    });
+    const name=(deck.title||"slides").replace(/[^a-z0-9]+/gi,"-").replace(/^-|-$/g,"").slice(0,40)||"slides";
+    p.writeFile({fileName:name+".pptx"});
+  }catch(e){alert("Could not create the file: "+e.message)}
+}
+
+/* ============ ASSIGNMENT SCANNER ============ */
+async function previewScan(e){
+  const f=e.target.files&&e.target.files[0];if(!f)return;
+  if(!f.type.startsWith("image/")){alert("Please choose an image file.");return}
+  try{
+    const r=await fileToImagePart(f);scanImage=r.part;
+    $("scanPreview").src=r.preview;$("scanPreview").style.display="block";$("scanStatus").textContent="Image ready: "+f.name;
+  }catch(err){$("scanStatus").textContent="Could not read the image."}
+  e.target.value="";
+}
+function clearScanner(){
+  scanImage=null;$("scanPreview").removeAttribute("src");$("scanPreview").style.display="none";$("scanNotes").value="";
+  $("scanResult").classList.add("hide");$("scanResult").innerHTML="";$("scanActions").classList.add("hide");$("scanStatus").textContent="";
+}
+async function scanAssignment(){
+  if(!scanImage){alert("Please take a photo or choose an assignment image first.");return}
+  if(!getKey()){openModal("settingsModal");$("keyMessage").textContent="Add API key first!";return}
+  const tasks={
+    solve:"Read the assignment carefully and solve each visible question step by step. Explain the reasoning in learner-friendly language.",
+    mark:"Read the questions and the learner's written answers. Mark what can be read, identify correct and incorrect parts, and explain corrections. If handwriting is unclear, say so instead of guessing.",
+    explain:"Transcribe each readable question and explain what it asks in simple language. Then show how a learner could approach it.",
+    transcribe:"Transcribe the visible text as accurately as possible. Preserve question numbers and options. Mark unreadable text as [unclear]. Do not solve the questions.",
+    correct:"Read the learner's written work, correct mistakes, and explain each important correction. Do not guess words that cannot be read.",
+    teacher:"Prepare a teacher's marking scheme for the visible questions. Give expected answers, marks per item, and acceptable alternative answers where appropriate."
+  };
+  const prompt=`You are examining an uploaded assignment image.
+Requested task: ${tasks[$("scanAction").value]}
+Class/subject: ${$("scanLevel").value||"Class not specified"}
+Additional instructions: ${$("scanNotes").value||"None"}
+
+Read the image carefully. Keep the original question numbering. If a part is blurred, cut off, obscured, or illegible, clearly say which part needs a clearer photo. Do not invent missing questions or details. Use clear headings and readable formatting.`;
+  $("scanBtn").disabled=true;$("scanStatus").textContent="Reading the image and preparing a response…";$("scanActions").classList.add("hide");
+  try{
+    const text=await request({contents:[{role:"user",parts:[{text:prompt},{inlineData:scanImage}]}],system:"You are an accurate educational assignment-reading assistant. Never pretend to read text that is not legible. Give age-appropriate explanations and distinguish clearly between what is visible and what is uncertain."});
+    $("scanResult").innerHTML=renderMarkdown(text);$("scanResult").classList.remove("hide");$("scanActions").classList.remove("hide");
+    $("scanStatus").textContent="Scan completed. Review the result carefully.";
+  }catch(e){$("scanStatus").textContent=e.name==="AbortError"?"Stopped.":"Scan failed: "+e.message}
+  finally{$("scanBtn").disabled=false}
+}
+
+/* ============ QUIZ ============ */
+function updateSubjects(){
+  const cls=$("qClass").value;
+  if(!cls){$("qSubject").innerHTML='<option value="">-- Select Class First --</option>';$("topicSuggestions").innerHTML="";return}
+  fillSubjectSelect("qSubject",cls,true);$("topicSuggestions").innerHTML="";$("qTopic").value="";
+}
+function toggleTimerOptions(){$("timerOptions").style.display=$("qTimerEnable").checked?"block":"none"}
+function normalizeQuiz(arr){
+  return arr.filter(q=>q&&q.question).map(q=>{
+    q.question=String(q.question).replace(/^\s*\d+[.)]\s*/,"");
+    if(Array.isArray(q.options)&&q.options.length&&q.type!=="theory"){
+      q.type="objective";
+      let c=q.correct;
+      if(typeof c==="string"){const idx="ABCD".indexOf(c.trim().toUpperCase().charAt(0));c=idx>=0?idx:Number(c)}
+      q.correct=(Number.isInteger(c)&&c>=0&&c<q.options.length)?c:0;
+    }else{q.type="theory"}
+    return q;
+  });
+}
+async function generateQuiz(){
+  if(!getKey()){alert("Add API key first!");openModal("settingsModal");return}
+  const qclass=$("qClass").value,subject=$("qSubject").value,topic=$("qTopic").value.trim(),num=Number($("qNum").value),type=$("qType").value,becePast=$("qBecePast").checked;
+  if(!qclass||!subject||!topic){alert("Select Class, Subject and write a Topic!");return}
+  quizConfig={qclass,subject,topic,num,type,timerEnabled:$("qTimerEnable").checked,timerMinutes:Number($("qTimer").value||10),becePast};
+  const style=becePast?"Write NEW questions in the style of BECE past papers (objective A-D and theory). Do NOT claim any question is an authentic past BECE question and do NOT invent exam years.":"Follow the Ghana NaCCA curriculum.";
+  const prompt=`Generate a quiz as STRICT JSON only. No text outside the JSON.
+${style}
+Subject: ${subject}, Class: ${qclass}, Topic: ${topic}, Number of questions: exactly ${num}, Type: ${type} (objective = multiple choice only, theory = written only, mixed = both).
+Return a JSON array like:
+[
+ {"question":"What is photosynthesis?","type":"objective","options":["A) ...","B) ...","C) ...","D) ..."],"correct":0,"explanation":"...","marks":2},
+ {"question":"Explain the importance of water in plants. (Give 3 points)","type":"theory","correctAnswer":"Sample answer with points...","explanation":"Marking scheme...","marks":5}
+]
+For objective questions "correct" is the index 0-3 of the right option. For theory give "correctAnswer" and a marking scheme. Marks: objective 2, theory 5-10. All questions must suit ${qclass} ${subject} and the topic "${topic}". Do not put question numbers in the question text. Return ONLY the JSON array.`;
+  $("genQuizBtn").disabled=true;$("quizStatus").textContent="⏳ Generating quiz... please wait.";
+  try{
+    const text=await request({contents:[{role:"user",parts:[{text:prompt}]}],system:"You create accurate educational assessments for Ghanaian basic schools. Return valid JSON only."});
+    const m=text.replace(/```json/gi,"").replace(/```/g,"").match(/\[[\s\S]*\]/);
+    if(!m)throw new Error("The AI reply was not valid JSON. Tap Generate again.");
+    let arr;try{arr=JSON.parse(m[0])}catch(e){throw new Error("The AI reply was not valid JSON. Tap Generate again.")}
+    quizData=normalizeQuiz(Array.isArray(arr)?arr:[]);
+    if(!quizData.length)throw new Error("Empty quiz. Tap Generate again.");
+    $("quizStatus").textContent="";closeModal("quizSetupPanel");openQuizPage();
+  }catch(e){
+    $("quizStatus").textContent=e.name==="AbortError"?"Stopped.":"❌ "+e.message;
+  }finally{$("genQuizBtn").disabled=false}
+}
+function openQuizPage(){
+  quizAnswers={};theoSelf={};quizSubmitted=false;
+  $("quizPage").classList.add("open");
+  $("quizTitle").textContent=quizConfig.subject+" Quiz"+(quizConfig.becePast?" - BECE-style":"");
+  $("quizMeta").textContent=quizConfig.qclass+" · "+quizConfig.topic+" · "+quizData.length+" Qs";
+  startQuizTimer();
+  renderQuizQuestions(false);$("quizSubmitBtn").style.display="block";
+}
+function startQuizTimer(){
+  clearInterval(quizTimerInterval);
+  if(!quizConfig.timerEnabled){$("quizTimerBadge").style.display="none";return}
+  quizTimeLeft=quizConfig.timerMinutes*60;$("quizTimerBadge").style.display="inline-block";updateTimerDisplay();
+  quizTimerInterval=setInterval(()=>{
+    quizTimeLeft--;updateTimerDisplay();
+    if(quizTimeLeft<=0){clearInterval(quizTimerInterval);alert("⏰ Time's up! Submitting your answers...");submitQuiz(true)}
+  },1000);
+}
+function updateTimerDisplay(){
+  const t=Math.max(0,quizTimeLeft),m=Math.floor(t/60),s=t%60,b=$("quizTimerBadge");
+  b.textContent="⏱️ "+m+":"+String(s).padStart(2,"0");
+  b.className="timer-badge"+(t<=60?" danger":t<=120?" warn":"");
+}
+function updateProgress(){
+  const answered=Object.keys(quizAnswers).filter(k=>String(quizAnswers[k]).trim()!=="").length;
+  $("quizProgressBar").style.width=(quizData.length?Math.round(answered/quizData.length*100):0)+"%";
+}
+function getScore(){
+  const theo=Object.values(theoSelf).reduce((a,b)=>a+b,0);
+  const total=quizState.objTotal+quizState.theoTotal,earned=quizState.objEarned+theo;
+  return {earned,total,theo,percent:total?Math.round(earned/total*100):0};
+}
+function updateScore(){
+  if(!$("scoreMain"))return;
+  const s=getScore();
+  $("scoreMain").textContent=s.earned+" / "+s.total;
+  $("scorePct").textContent=s.percent+"% - "+(s.percent>=80?"Excellent! 🎉":s.percent>=50?"Good! 👍":"Keep practising 💪");
+  $("scoreDetail").textContent="Objective: "+quizState.objEarned+"/"+quizState.objTotal+" · Theory (self-marked): "+s.theo+"/"+quizState.theoTotal;
+}
+function renderQuizQuestions(showResults){
+  const body=$("quizBody");body.innerHTML="";
+  quizState={objEarned:0,objTotal:0,theoTotal:0};
+  quizData.forEach((q,i)=>{
+    const marks=Number(q.marks)||(q.type==="theory"?5:2);
+    const card=document.createElement("div");card.className="q-card";
+    const num=document.createElement("div");num.className="q-num";
+    num.textContent="QUESTION "+(i+1)+" · "+marks+" MARKS · "+(quizConfig.becePast?"BECE-STYLE · ":"")+q.type.toUpperCase();
+    const qt=document.createElement("div");qt.className="q-text";qt.textContent=q.question;
+    card.append(num,qt);
+    if(q.type==="theory"){
+      quizState.theoTotal+=marks;
+      if(!showResults){
+        const ta=document.createElement("textarea");ta.className="q-input";ta.placeholder="✏️ Write your answer here...";
+        ta.value=quizAnswers[i]||"";ta.oninput=e=>{quizAnswers[i]=e.target.value;updateProgress()};card.appendChild(ta);
+      }else{
+        const ans=document.createElement("div");ans.style.cssText="padding:12px;background:var(--okbg);border-radius:10px;margin-top:8px";
+        ans.innerHTML="<small style='color:var(--green)'>Your answer:</small><br>"+escapeHTML(quizAnswers[i]||"(No answer)").replace(/\n/g,"<br>")+
+          "<br><br><small style='color:var(--green)'>Expected answer / marking scheme:</small><br>"+escapeHTML(q.correctAnswer||"").replace(/\n/g,"<br>")+
+          (q.explanation?"<br><br><small style='color:var(--muted)'>"+escapeHTML(q.explanation).replace(/\n/g,"<br>")+"</small>":"");
+        const mk=document.createElement("div");mk.style.cssText="display:flex;align-items:center;gap:8px;margin-top:12px";
+        const inp=document.createElement("input");inp.type="number";inp.min="0";inp.max=String(marks);inp.value=theoSelf[i]!==undefined?theoSelf[i]:"";inp.placeholder="0";inp.style.width="80px";
+        inp.oninput=()=>{let v=Number(inp.value);if(isNaN(v)||v<0)v=0;if(v>marks)v=marks;theoSelf[i]=v;updateScore()};
+        const lab=document.createElement("small");lab.style.color="var(--muted)";lab.textContent="Your marks (self-mark, out of "+marks+")";
+        mk.append(inp,lab);ans.appendChild(mk);card.appendChild(ans);
+      }
+    }else{
+      quizState.objTotal+=marks;
+      const opts=document.createElement("div");opts.className="q-options";
+      q.options.forEach((opt,j)=>{
+        const btn=document.createElement("button");btn.className="q-opt";btn.textContent=opt;
+        if(!showResults){
+          if(quizAnswers[i]===j)btn.classList.add("selected");
+          btn.onclick=()=>{quizAnswers[i]=j;[...opts.children].forEach((c,k)=>c.classList.toggle("selected",k===j));updateProgress()};
+        }else{
+          btn.disabled=true;
+          if(j===q.correct)btn.classList.add("correct");
+          if(quizAnswers[i]===j&&j!==q.correct)btn.classList.add("wrong");
+        }
+        opts.appendChild(btn);
+      });
+      card.appendChild(opts);
+      if(showResults){
+        if(quizAnswers[i]===q.correct)quizState.objEarned+=marks;
+        const ex=document.createElement("div");ex.style.cssText="margin-top:10px;font-size:13px;color:var(--muted);background:var(--bar);padding:8px;border-radius:8px";
+        ex.innerHTML=(quizAnswers[i]===undefined?"⚠️ Not answered<br>":"")+"✅ Correct: "+escapeHTML(q.options[q.correct])+"<br>💡 "+escapeHTML(q.explanation||"");
+        card.appendChild(ex);
+      }
+    }
+    body.appendChild(card);
+  });
+  updateProgress();
+  if(showResults){
+    clearInterval(quizTimerInterval);
+    const r=document.createElement("div");r.className="quiz-result q-card";
+    r.innerHTML='<div style="font-size:13px;color:var(--muted)">QUIZ COMPLETED</div><div class="score" id="scoreMain"></div><h2 style="margin:8px 0;font-size:22px" id="scorePct"></h2><p style="color:var(--muted);margin:4px 0" id="scoreDetail"></p><p class="small">Theory marks start at 0. Compare your answers with the marking scheme above and enter your own marks.</p>';
+    const act=document.createElement("div");act.style.cssText="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px";
+    const retake=document.createElement("button");retake.className="btn";retake.textContent="🔄 Retake Quiz";
+    retake.onclick=()=>{quizAnswers={};theoSelf={};quizSubmitted=false;$("quizSubmitBtn").style.display="block";renderQuizQuestions(false);startQuizTimer()};
+    const share=document.createElement("button");share.className="btn";share.textContent="📤 Share Results";share.onclick=shareResults;
+    const chat=document.createElement("button");chat.className="primary";chat.textContent="💬 Explain in Chat";chat.onclick=continueToChat;
+    act.append(retake,share,chat);r.appendChild(act);body.appendChild(r);
+    updateScore();body.scrollTo({top:body.scrollHeight,behavior:"smooth"});
+  }
+}
+function submitQuiz(force){
+  if(quizSubmitted)return;
+  const answered=Object.keys(quizAnswers).filter(k=>String(quizAnswers[k]).trim()!=="").length;
+  if(force!==true&&answered<quizData.length&&!confirm("You answered "+answered+" of "+quizData.length+". Submit anyway?"))return;
+  quizSubmitted=true;clearInterval(quizTimerInterval);$("quizSubmitBtn").style.display="none";renderQuizQuestions(true);
+}
+function shareResults(){
+  const s=getScore();
+  shareText("🎓 Tender Sprout AI - Quiz Results\n📚 "+quizConfig.subject+" - "+quizConfig.qclass+"\n📝 Topic: "+quizConfig.topic+"\nScore: "+s.earned+"/"+s.total+" ("+s.percent+"%)\nQuestions: "+quizData.length+(quizConfig.timerEnabled?"\n⏱️ Timer: "+quizConfig.timerMinutes+" mins":""),"Quiz Results");
+}
+function continueToChat(){
+  const s=getScore();
+  let wrong="";
+  quizData.forEach((q,i)=>{
+    if(q.type==="objective"&&quizAnswers[i]!==q.correct){
+      wrong+="\nQ"+(i+1)+": "+q.question+" | My answer: "+(quizAnswers[i]===undefined?"(none)":q.options[quizAnswers[i]])+" | Correct: "+q.options[q.correct];
+    }else if(q.type==="theory"){
+      wrong+="\nQ"+(i+1)+" (theory): "+q.question+" | My answer: "+(quizAnswers[i]||"(none)");
+    }
+  });
+  const summary="I completed a quiz.\nSubject: "+quizConfig.subject+"\nClass: "+quizConfig.qclass+"\nTopic: "+quizConfig.topic+"\nScore: "+s.earned+"/"+s.total+" ("+s.percent+"%)\n\nQuestions I got wrong or wrote answers for:"+wrong+"\n\nPlease explain the wrong answers, mark my theory answers briefly, and give tips.";
+  closeQuizPage();sendMessage(summary);
+}
+function closeQuizPage(){clearInterval(quizTimerInterval);$("quizPage").classList.remove("open")}
+
+/* ============ HISTORY ============ */
+function showHistory(){
+  const list=$("historyList");list.innerHTML="";
+  let all=[];try{all=JSON.parse(sGet("l","tsa_chats")||"[]")}catch(e){}
+  if(!Array.isArray(all)||!all.length){list.textContent="No saved conversations yet.";return}
+  all.forEach(c=>{
+    const b=document.createElement("button");b.className="card";b.style.cssText="width:100%;margin-bottom:8px;min-height:0";
+    b.textContent=c.title+" · "+new Date(c.updated).toLocaleString();
+    b.onclick=()=>{
+      messages=c.messages||[];currentChatId=c.id;$("chat").innerHTML="";$("welcome").classList.add("hide");
+      messages.forEach(m=>addMessage(m.role==="user"?"user":"model",(m.parts||[]).map(p=>p.text||"").join("\n")));
+      closeModal("historyModal");
+    };
+    list.appendChild(b);
+  });
+}
+$("clearHistoryBtn").onclick=()=>{if(confirm("Delete all saved chats?")){sDel("l","tsa_chats");showHistory()}};
+
+/* ============ INIT ============ */
+applyTheme(document.documentElement.dataset.theme||"dark");
+fillClassSelect("qClass",true);
+fillClassSelect("lpClass",false);
+fillClassSelect("spClass",false);
+$("lpClass").value="Basic 4";$("spClass").value="Basic 4";
+updateLessonSubjects();
+if(getKey())setStatus("Key ready","var(--green)");
+else{setStatus("Add API key","var(--muted)");setTimeout(()=>openModal("settingsModal"),400)}
+</script>
+</body>
+</html>
