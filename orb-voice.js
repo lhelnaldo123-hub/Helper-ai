@@ -113,13 +113,14 @@
   /* ---------- voice engine ---------- */
   var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
   var T_ON = 0.12, T_BARGE = 0.30;      // how loud counts as "you are talking" / "you are interrupting"
-  var END_MS = 800;                     // silence that ends your turn
+  var END_MS = 700;                     // silence that ends your turn (waits a bit longer after very short speech)
   var PRE_BLOCKS = 6;                   // keeps the last half second so first words are never lost
 
   var state = "idle", on = false, paused = false, turn = 0;
   var ctx, micAn, outAn, stream, srcNode, proc, muteNode, ctl = null, stopFn = null, fxP = null, fxPlaying = false;
   var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, thinkSince = 0, fillerArmed = false;
   var buf = new Float32Array(1024);
+  var held = "", holds = 0, holdT = null, lastAck = "";   // words kept when you pause mid-thought
   var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
 
   function set(s, text) {
@@ -170,32 +171,91 @@
   }
   function stopPlayback() { try { player.pause(); } catch (e) {} if (stopFn) { var f = stopFn; stopFn = null; f(); } }
 
-  /* --- short spoken extras ("I'm listening", "Okay, one moment"), made once per voice and kept on the phone --- */
-  var FX_LINES = { hello: "Okay, I'm listening.", fill: ["Mm-hm.", "Okay, one moment.", "Let me think."] };
-  function fxKey() { return "tsa_voice_fx_" + (voice || "default"); }
-  function getFx() { try { return JSON.parse(localStorage.getItem(fxKey())); } catch (e) { return null; } }
-  var fxMaking = {};
-  function makeFx() {
-    var k = fxKey(); if (getFx() || fxMaking[k]) return fxMaking[k] || Promise.resolve();
-    var all = [FX_LINES.hello].concat(FX_LINES.fill);
-    fxMaking[k] = Promise.all(all.map(function (t) { return post("/api/speak", { text: t, voice: voice }).then(function (r) { return r.audio; }); }))
-      .then(function (a) { try { localStorage.setItem(k, JSON.stringify({ hello: a[0], fill: a.slice(1) })); } catch (e) {} })
-      .catch(function () {}).then(function () { delete fxMaking[k]; });
-    return fxMaking[k];
+  /* --- short spoken reactions ("Mm-hm", "Oh nice!", "Good question."), made once per voice and kept on the phone --- */
+  var HELLO = "Okay, I'm listening.";
+  var ACKS = {
+    ok:   ["Mm-hm.", "Aha.", "Okay.", "Right.", "I see.", "Okay, got it."],
+    ask:  ["Good question.", "Hmm, let me think.", "Okay, one moment.", "Sure."],
+    task: ["Sure thing.", "Alright.", "Okay, on it."],
+    good: ["Oh nice!", "That's great!", "Oh wow, nice."],
+    sad:  ["Aww.", "Oh no.", "Hmm, I'm sorry to hear that."],
+    wait: ["Let me think.", "Hmm, one moment.", "Just a second."]
+  };
+  function allLines() { var a = [HELLO]; Object.keys(ACKS).forEach(function (c) { a = a.concat(ACKS[c]); }); return a; }
+  function fxKey() { return "tsa_voice_fx2_" + (voice || "default"); }
+  var fxMem = null, fxBusy = {};
+  function fxLoad() {
+    var k = fxKey(); if (fxMem && fxMem.k === k) return fxMem.v;
+    var v = {}; try { v = JSON.parse(localStorage.getItem(k)) || {}; } catch (e) {}
+    try { localStorage.removeItem("tsa_voice_fx_" + (voice || "default")); } catch (e) {}
+    fxMem = { k: k, v: v }; return v;
   }
-  function playFx(kind) {
-    var fx = getFx(); if (!fx) return null;
-    var clip = kind === "hello" ? fx.hello : fx.fill[Math.floor(Math.random() * fx.fill.length)];
-    if (!clip) return null;
+  function ensureFx() {                      // returns a promise that is ready as soon as the "I'm listening" clip exists
+    var k = fxKey(), store = fxLoad();
+    var todo = allLines().filter(function (t) { return !store[t]; });
+    if (!todo.length) return Promise.resolve();
+    if (fxBusy[k]) return fxBusy[k];
+    var helloDone, helloP = store[HELLO] ? Promise.resolve() : new Promise(function (r) { helloDone = r; });
+    fxBusy[k] = helloP;
+    function next() {
+      var t = todo.shift(); if (!t) return Promise.resolve();
+      return post("/api/speak", { text: t, voice: voice }).then(function (r) {
+        store[t] = r.audio; try { localStorage.setItem(k, JSON.stringify(store)); } catch (e) {}
+        if (t === HELLO && helloDone) helloDone();
+      }).catch(function () { if (t === HELLO && helloDone) helloDone(); }).then(next);
+    }
+    Promise.all([next(), next()]).then(function () { delete fxBusy[k]; if (helloDone) helloDone(); });
+    return helloP;
+  }
+  function playClip(audio) {
+    if (!audio) return null;
     fxPlaying = true;
-    fxP = playB64(clip).then(function () { fxPlaying = false; fxP = null; });
+    fxP = playB64(audio).then(function () { fxPlaying = false; fxP = null; });
     return fxP;
+  }
+  function pickFrom(kind, skipRandom) {
+    if (!kind) return null;
+    if (!skipRandom && Math.random() > 0.8) return null;          // sometimes just answer, like a real person
+    var store = fxLoad();
+    var opts = (ACKS[kind] || []).filter(function (t) { return store[t] && t !== lastAck; });
+    if (!opts.length) return null;
+    var t = opts[Math.floor(Math.random() * opts.length)]; lastAck = t;
+    return { text: t, audio: store[t] };
+  }
+  /* what kind of reaction fits what you just said */
+  function classify(text) {
+    var s = text.toLowerCase().replace(/\s+/g, " ").trim(), words = s.split(" ").length;
+    if (/^(hi|hello|hey|good (morning|afternoon|evening)|thanks?|thank you|bye|goodbye|ok|okay|yes|no|yeah|yep|nope|please)\b[.!?, ]*$/.test(s)) return "";
+    if (/\b(sorry|sad|tired|sick|died|passed away|failed|lost my|stressed|worried|bad day|angry|upset|hurt|crying|scared|lonely|headache|hungry)\b/.test(s)) return "sad";
+    if (/\b(i passed|i won|promoted|graduat|my birthday|excited|so happy|finally|good news|congrat|got the job|got admission)\b/.test(s)) return "good";
+    if (/^(please |can you |could you |kindly |i want you to |i need you to )?(tell me|explain|teach|show|give me|make|create|write|help me|quiz|solve|list|translate|summari[sz]e|prepare|plan|set)\b/.test(s) || /\b(lesson plan|quiz me|test me)\b/.test(s)) return "task";
+    if (/\?$/.test(s) || /^(what|why|how|who|when|where|which|can|could|is|are|do|does|did|will|would|should)\b/.test(s)) return "ask";
+    return words >= 4 ? "ok" : "";
+  }
+  /* did you stop mid-thought? (ends with "and", "but", "so", "um", "...", a comma, and so on) */
+  var HANG = ["and", "but", "so", "because", "or", "the", "a", "an", "to", "of", "with", "for", "in", "on", "at", "that", "if", "when", "my", "your", "um", "uh", "umm", "uhh", "hmm", "like", "then", "also", "i'm", "it's", "why", "about", "from", "than", "which"];
+  function incomplete(t) {
+    t = t.trim(); if (!t) return false;
+    if (/(\.\.\.|…|[,;:\-–—])\s*$/.test(t)) return true;
+    var w = t.toLowerCase().replace(/[.?!"')\]]+$/, "").split(/\s+/), last = w[w.length - 1];
+    if (w.length === 1) return /^(um+|uh+|hmm+)$/.test(last);
+    return HANG.indexOf(last) >= 0;
+  }
+  function dropHeld() { held = ""; holds = 0; clearTimeout(holdT); }
+  function armHold() {                       // you paused mid-thought and never came back: answer what we have
+    clearTimeout(holdT);
+    holdT = setTimeout(function () {
+      if (held && on && !paused && state === "listen" && !talking) {
+        var my = ++turn; ctl = (window.AbortController ? new AbortController() : null);
+        set("think", ""); respond(my, held);
+      }
+    }, 3000);
   }
 
   /* --- turn taking --- */
   function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; }
   function listen() { resetUtt(); bargeMs = 0; fillerArmed = false; set("listen", ""); }
-  function startTalk() { talking = true; utt = pre.slice(); pre = []; }
+  function startTalk() { talking = true; utt = pre.slice(); pre = []; clearTimeout(holdT); }
   function cancelPending() { turn++; if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } fillerArmed = false; stopPlayback(); fxPlaying = false; }
 
   function micMessage(e) {
@@ -220,7 +280,7 @@
       return;
     }
     try {
-      var warm = makeFx();
+      var warm = ensureFx();
       if (!ctx) {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         outAn = ctx.createAnalyser(); outAn.fftSize = 1024;
@@ -237,7 +297,7 @@
       on = true; paused = false; pre = []; resetUtt(); lastT = performance.now();
       requestAnimationFrame(tick);
       await Promise.race([warm, new Promise(function (r) { setTimeout(r, 1500); })]);
-      var hp = on ? playFx("hello") : null;
+      var hp = on ? playClip(fxLoad()[HELLO]) : null;
       if (hp) { set("speak", ""); await hp; }
       if (on && !paused && state !== "listen") listen();
     } catch (e) {
@@ -247,14 +307,14 @@
     }
   }
   function end() {
-    on = false; paused = false; cancelPending(); resetUtt();
+    on = false; paused = false; cancelPending(); resetUtt(); dropHeld();
     try { if (proc) { proc.onaudioprocess = null; proc.disconnect(); } if (srcNode) srcNode.disconnect(); } catch (e) {}
     if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
     setLevel(0); q("vxPause").textContent = "Pause"; set("idle", "");
   }
   function pause() {
     if (!on) return;
-    if (!paused) { paused = true; cancelPending(); resetUtt(); setLevel(0); q("vxPause").textContent = "Resume"; set("idle", ""); }
+    if (!paused) { paused = true; cancelPending(); resetUtt(); dropHeld(); setLevel(0); q("vxPause").textContent = "Resume"; set("idle", ""); }
     else { paused = false; q("vxPause").textContent = "Pause"; pre = []; listen(); }
   }
 
@@ -266,12 +326,12 @@
       setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
       if (state === "listen") {
         if (mic > T_ON) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
-        else if (talking && speechStart && now - lastVoice > END_MS) submit();
+        else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? 1000 : END_MS)) submit();
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
         if (!fxPlaying) { if (mic > T_ON) cont += dt; else cont = Math.max(0, cont - dt); }
         if (cont >= 140) { cancelPending(); cont = 0; lastVoice = now; set("listen", ""); }
-        else if (fillerArmed && now - thinkSince > 1600) { fillerArmed = false; playFx("fill"); }
+        else if (fillerArmed && now - thinkSince > 1600) { fillerArmed = false; playClip((pickFrom("wait", true) || {}).audio); }
       } else if (state === "speak") {
         if (mic > T_BARGE) bargeMs += dt; else bargeMs = Math.max(0, bargeMs - dt * 2);
         if (bargeMs >= 260) {                 // you interrupted
@@ -284,20 +344,48 @@
 
   function submit() {
     var spoke = lastVoice - speechStart;
-    if (spoke < 350) { resetUtt(); return; }          // just a noise
+    if (spoke < 350) { resetUtt(); if (held) armHold(); return; }          // just a noise
     var my = ++turn, audio = wavB64(utt);
     ctl = (window.AbortController ? new AbortController() : null);
-    set("think", ""); thinkSince = performance.now(); fillerArmed = true; cont = 0;
-    ask(my, audio, ctl);
+    set("think", ""); thinkSince = performance.now(); fillerArmed = false; cont = 0;
+    transcribe(my, audio, ctl);
   }
-  async function ask(my, audio, c) {
+  /* step 1: turn your voice into words, and decide if you are really finished */
+  async function transcribe(my, audio, c) {
     try {
       var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
-      var d = await post("/api/voice", { audio: audio, ext: "wav", history: history, memory: memory, lang: lang, langName: name, mode: MODE, spoken: true }, c && c.signal);
+      var d = await post("/api/voice", { audio: audio, ext: "wav", lang: lang, langName: name, sttOnly: true }, c && c.signal);
+      if (my !== turn) return;
+      var heard = String(d.user || "").trim();
+      if (!heard) { if (held) respond(my, held); else listen(); return; }
+      var full = (held ? held + " " : "") + heard;
+      if (holds < 2 && incomplete(full)) {          // still thinking out loud: keep listening and join the next part
+        held = full; holds++; resetUtt(); pre = []; listen(); armHold(); return;
+      }
+      respond(my, full);
+    } catch (e) {
+      if (e.name === "AbortError" || my !== turn) return;
+      fillerArmed = false; resetUtt();
+      set("idle", "Error: " + (navigator.onLine ? e.message : "No internet. I need to be online to talk."));
+      setTimeout(function () { if (on && !paused && state === "idle") listen(); }, 3000);
+    }
+  }
+  /* step 2: react like a person while the answer is being thought up */
+  function respond(my, text) {
+    dropHeld(); resetUtt(); pre = [];
+    var ack = pickFrom(classify(text));
+    if (ack) playClip(ack.audio);
+    thinkSince = performance.now() + (ack ? 1800 : 0); fillerArmed = true; cont = 0;
+    ask(my, text, ack ? ack.text : "", ctl);
+  }
+  async function ask(my, text, ack, c) {
+    try {
+      var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
+      var d = await post("/api/voice", { text: text, ack: ack, history: history, memory: memory, lang: lang, langName: name, mode: MODE, spoken: true }, c && c.signal);
       if (my !== turn) return;
       fillerArmed = false;
       if (!d.reply) { listen(); return; }
-      history.push({ role: "user", content: d.user }, { role: "assistant", content: d.reply });
+      history.push({ role: "user", content: text }, { role: "assistant", content: d.reply });
       history = history.slice(-16); save("tsa_voice_history", history);
       if (d.mem && memory.indexOf(d.mem) < 0) { memory.push(d.mem); memory = memory.slice(-30); save("tsa_voice_memory", memory); }
       resetUtt(); pre = [];
