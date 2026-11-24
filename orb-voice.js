@@ -135,9 +135,10 @@
 
   var state = "idle", on = false, paused = false, turn = 0;
   var ctx, micAn, outAn, stream, srcNode, proc, muteNode, ctl = null, stopFn = null, fxP = null, fxPlaying = false;
-  var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, thinkSince = 0, fillerArmed = false;
+  var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, fillerArmed = false;
   var buf = new Float32Array(1024);
-  var held = "", holds = 0, holdT = null, lastAck = "";   // words kept when you pause mid-thought
+  var held = "", holds = 0, holdT = null, bcT = null, lastAck = "";
+  var clipN = 0, clipGen = 0, lastClipEnd = 0, fillN = 0, nextFill = 0, listenSince = 0, nudged = false, early = false;   // words kept when you pause mid-thought
   var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
 
   /* --- the Text screen: everything said, with Copy buttons (and full code, memos, lesson plans made by voice) --- */
@@ -241,14 +242,18 @@
   /* --- short spoken reactions ("Mm-hm", "Oh nice!", "Good question."), made once per voice and kept on the phone --- */
   var HELLO = "Okay, I'm listening.";
   var ACKS = {
+    early: ["Mm-hm.", "Okay.", "Right.", "I see.", "Okay, okay."],
+    listen: ["Mm-hm, I'm listening.", "Okay... I'm listening.", "Go on, I'm listening.", "Take your time, I'm listening."],
+    wait: ["Let me think.", "Hmm, let's see.", "Just a second.", "Let's see..."],
     ok:   ["Mm-hm.", "Aha.", "Okay.", "Right.", "I see.", "Okay, got it."],
     ask:  ["Good question.", "Hmm, let me think.", "Okay, one moment.", "Sure."],
     task: ["Sure thing.", "Alright.", "Okay, on it."],
-    good: ["Oh nice!", "That's great!", "Oh wow, nice."],
-    sad:  ["Aww.", "Oh no.", "Hmm, I'm sorry to hear that."],
-    wait: ["Let me think.", "Hmm, one moment.", "Just a second."],
+    wait2: ["Almost there.", "Just a little more.", "Okay, nearly done.", "Thanks for waiting."],
+    nudge: ["I'm still here. Take your time.", "Okay, I'm listening whenever you're ready."],
     work: ["Sure, I'll put that in your chat.", "Okay, I'll make that in your chat.", "On it. Give me a moment."],
-    ready: ["It's ready. Tap the text button to copy it.", "Done. You can copy it from the text button."]
+    ready: ["It's ready. Tap the text button to copy it.", "Done. You can copy it from the text button."],
+    good: ["Oh nice!", "That's great!", "Oh wow, nice."],
+    sad:  ["Aww.", "Oh no.", "Hmm, I'm sorry to hear that."]
   };
   function allLines() { var a = [HELLO]; Object.keys(ACKS).forEach(function (c) { a = a.concat(ACKS[c]); }); return a; }
   function fxKey() { return "tsa_voice_fx2_" + (voice || "default"); }
@@ -276,12 +281,18 @@
     Promise.all([next(), next()]).then(function () { delete fxBusy[k]; if (helloDone) helloDone(); });
     return helloP;
   }
-  function playClip(audio) {
+  function playClip(audio) {                 // clips play one after another, never on top of each other
     if (!audio) return null;
-    fxPlaying = true;
-    fxP = playB64(audio).then(function () { fxPlaying = false; fxP = null; });
+    var g = clipGen; clipN++; fxPlaying = true;
+    fxP = (fxP || Promise.resolve()).then(function () { return g === clipGen ? playB64(audio) : null; }).then(function () {
+      if (g !== clipGen) return;
+      lastClipEnd = performance.now(); clipN = Math.max(0, clipN - 1);
+      if (!clipN) { fxPlaying = false; fxP = null; if (state === "listen" && !talking) pre = []; }   // forget what the mic heard while the reaction played
+    });
     return fxP;
   }
+  function cancelClips() { clipGen++; clipN = 0; fxP = null; fxPlaying = false; stopPlayback(); }
+  function armFiller(ms) { fillerArmed = true; fillN = 0; nextFill = performance.now() + ms; }
   function pickFrom(kind, skipRandom) {
     if (!kind) return null;
     if (!skipRandom && Math.random() > 0.8) return null;          // sometimes just answer, like a real person
@@ -307,7 +318,7 @@
     t = t.trim(); if (!t) return false;
     if (/(\.\.\.|…|[,;:\-–—])\s*$/.test(t)) return true;
     var w = t.toLowerCase().replace(/[.?!"')\]]+$/, "").split(/\s+/), last = w[w.length - 1];
-    if (w.length === 1) return /^(um+|uh+|hmm+)$/.test(last);
+    if (w.length === 1) return /^(um+|uh+|hmm+|mm+|m+h?m+|emm+|erm+|ehm+|er+|ah+)$/.test(last);
     return HANG.indexOf(last) >= 0;
   }
   /* asking for code, a PDF, a lesson plan, a letter...: the chat makes it properly, and you can copy it from the Text screen */
@@ -317,7 +328,7 @@
     var s = t.toLowerCase();
     return (W_VERB.test(s) && W_OBJ.test(s)) || /\b(as|in|into|to) (a )?(pdf|word document)\b/.test(s) || /\b(show|give|send) me (the|that|this) code\b/.test(s);
   }
-  function dropHeld() { held = ""; holds = 0; clearTimeout(holdT); }
+  function dropHeld() { held = ""; holds = 0; clearTimeout(holdT); clearTimeout(bcT); }
   function armHold() {                       // you paused mid-thought and never came back: answer what we have
     clearTimeout(holdT);
     holdT = setTimeout(function () {
@@ -325,14 +336,23 @@
         var my = ++turn; ctl = (window.AbortController ? new AbortController() : null);
         set("think", ""); respond(my, held);
       }
-    }, 3000);
+    }, 4500);
+  }
+  /* you paused or said "emm...": after a short wait, say "okay, I'm listening" so you know it is still with you */
+  function armBC() {
+    clearTimeout(bcT);
+    bcT = setTimeout(function () {
+      if (!held || !on || paused || state !== "listen" || talking || fxPlaying) return;
+      if (performance.now() - lastClipEnd < 2500) return;
+      var c = pickFrom("listen", true); if (c) playClip(c.audio);
+    }, 1300);
   }
 
   /* --- turn taking --- */
   function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; }
-  function listen() { resetUtt(); bargeMs = 0; fillerArmed = false; set("listen", ""); }
-  function startTalk() { talking = true; utt = pre.slice(); pre = []; clearTimeout(holdT); }
-  function cancelPending() { turn++; if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } fillerArmed = false; stopPlayback(); fxPlaying = false; }
+  function listen() { resetUtt(); bargeMs = 0; fillerArmed = false; clearTimeout(bcT); listenSince = performance.now(); nudged = false; set("listen", ""); }
+  function startTalk() { talking = true; utt = pre.slice(); pre = []; clearTimeout(holdT); clearTimeout(bcT); if (fxPlaying) cancelClips(); }
+  function cancelPending() { turn++; if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } fillerArmed = false; cancelClips(); }
 
   function micMessage(e) {
     var n = (e && e.name) || "", m = (e && e.message) || "";
@@ -401,13 +421,20 @@
       var mic = level(micAn);
       setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
       if (state === "listen") {
-        if (mic > T_ON) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
+        if (mic > (fxPlaying ? T_BARGE : T_ON)) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
+        else if (!talking && !held && !nudged && !fxPlaying && now - listenSince > 14000) {   // long silence: say we are still here
+          nudged = true; var nd = pickFrom("nudge", true); if (nd) playClip(nd.audio);
+        }
         else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? 1000 : END_MS)) submit();
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
         if (!fxPlaying) { if (mic > T_ON) cont += dt; else cont = Math.max(0, cont - dt); }
         if (cont >= 140) { cancelPending(); cont = 0; lastVoice = now; set("listen", ""); }
-        else if (fillerArmed && now - thinkSince > 1600) { fillerArmed = false; playClip((pickFrom("wait", true) || {}).audio); }
+        else if (fillerArmed && !fxPlaying && now >= nextFill) {     // still working: a short "let's see..." now and then
+          fillN++; var fl = pickFrom(fillN === 1 ? "wait" : "wait2", true);
+          if (fl) playClip(fl.audio);
+          if (fillN >= 4) fillerArmed = false; else nextFill = now + 4500;
+        }
       } else if (state === "speak") {
         if (mic > T_BARGE) bargeMs += dt; else bargeMs = Math.max(0, bargeMs - dt * 2);
         if (bargeMs >= 260) {                 // you interrupted
@@ -423,7 +450,9 @@
     if (spoke < 350) { resetUtt(); if (held) armHold(); return; }          // just a noise
     var my = ++turn, audio = wavB64(utt);
     ctl = (window.AbortController ? new AbortController() : null);
-    set("think", ""); thinkSince = performance.now(); fillerArmed = false; cont = 0;
+    set("think", ""); cont = 0; early = false;
+    if (spoke > 1500) { var ea = pickFrom("early"); if (ea) { early = true; playClip(ea.audio); } }   // react at once, transcribing takes a moment
+    armFiller(early ? 2800 : 2200);
     transcribe(my, audio, ctl);
   }
   /* step 1: turn your voice into words, and decide if you are really finished */
@@ -436,7 +465,7 @@
       if (!heard) { if (held) respond(my, held); else listen(); return; }
       var full = (held ? held + " " : "") + heard;
       if (holds < 2 && incomplete(full)) {          // still thinking out loud: keep listening and join the next part
-        held = full; holds++; resetUtt(); pre = []; listen(); armHold(); return;
+        held = full; holds++; resetUtt(); pre = []; listen(); armHold(); armBC(); return;
       }
       respond(my, full);
     } catch (e) {
@@ -450,16 +479,16 @@
   function respond(my, text) {
     dropHeld(); resetUtt(); pre = [];
     if (isWork(text) && window.tsaVoice && window.tsaVoice.work) { handleWork(my, text); return; }
-    var ack = pickFrom(classify(text));
+    var ack = early ? null : pickFrom(classify(text));
     if (ack) playClip(ack.audio);
-    thinkSince = performance.now() + (ack ? 1800 : 0); fillerArmed = true; cont = 0;
+    armFiller(ack || early ? 2600 : 1500); cont = 0;
     ask(my, text, ack ? ack.text : "", ctl);
   }
   async function handleWork(my, text) {
     var V = window.tsaVoice;
     addLog("you", text);
     var a = pickFrom("work", true); if (a) playClip(a.audio);
-    thinkSince = performance.now() + 1800; fillerArmed = true; cont = 0;
+    armFiller(2600); cont = 0;
     var r;
     try { r = await V.work(text); } catch (e) { r = { ok: false, why: String((e && e.message) || e) }; }
     fillerArmed = false;
