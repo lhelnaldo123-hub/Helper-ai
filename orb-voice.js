@@ -54,8 +54,16 @@
     ".vxbtns{display:flex;gap:.6rem;padding:0 1rem 1rem}",
     ".vxbtns button{flex:1;padding:.85rem;border-radius:999px;border:1px solid var(--line);background:var(--btn)}",
     "#vxEnd{color:#ff5a5a}",
-    "#vxSheet{position:fixed;inset:0;background:#0008;display:flex;align-items:flex-end;justify-content:center;z-index:10000}",
-    "#vxSheet[hidden]{display:none}",
+    "#vxSheet,#vxLog{position:fixed;inset:0;background:#0008;display:flex;align-items:flex-end;justify-content:center;z-index:10000}",
+    "#vxSheet[hidden],#vxLog[hidden]{display:none}",
+    ".vxrt{display:flex;gap:.5rem}",
+    "#vxLogList{max-height:58dvh;overflow:auto;font-size:.9rem;color:var(--muted)}",
+    ".vxi{border:1px solid var(--line);border-radius:14px;padding:.6rem .7rem;margin-bottom:.5rem;background:var(--btn);color:inherit}",
+    ".vxi small{display:block;color:var(--muted);font-size:.75rem;margin-bottom:.25rem}",
+    ".vxi pre{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:.9rem;line-height:1.4}",
+    ".vxi.code pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem}",
+    ".vxcard .vxcp{display:flex;gap:.4rem;margin-top:.45rem}",
+    ".vxcard .vxcp button{flex:none;padding:.4rem .75rem;border-radius:10px;background:transparent}",
     ".vxcard{width:100%;max-width:480px;background:var(--sheet);color:inherit;border-radius:22px 22px 0 0;padding:1.1rem 1.1rem calc(1.1rem + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:.55rem;max-height:90dvh;overflow:auto}",
     ".vxcard h3{margin:0 0 .2rem}",
     ".vxcard label{font-size:.8rem;color:var(--muted);margin-top:.35rem}",
@@ -77,7 +85,10 @@
     '<div class="vxtop">' +
       '<button class="vxib" id="vxBack" aria-label="Back to chat"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg></button>' +
       '<div class="vxname">Tender Sprout AI</div>' +
-      '<button class="vxib" id="vxGear" aria-label="Voice settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>' +
+      '<div class="vxrt">' +
+        '<button class="vxib" id="vxTextBtn" aria-label="Text and copy"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>' +
+        '<button class="vxib" id="vxGear" aria-label="Voice settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>' +
+      '</div>' +
     '</div>' +
     '<div class="vxmid"><div class="vxw"><span class="vxring"></span><span class="vxring vxr2"></span>' +
       '<button class="vxorb" id="vxOrb" aria-label="Tap to talk"><i></i><i></i><i></i></button></div></div>' +
@@ -95,6 +106,12 @@
       '<p class="vxhelp">On fish.audio, open a voice you like and copy its link from the browser.</p>' +
       '<div id="vxMsg"></div>' +
       '<button class="vxpri" id="vxDone">Done</button>' +
+    '</div></div>' +
+    '<div id="vxLog" hidden><div class="vxcard">' +
+      '<h3>Text</h3>' +
+      '<div id="vxLogList"></div>' +
+      '<div class="vxseg"><button id="vxLogChat">Open chat</button><button id="vxLogClear">Clear</button></div>' +
+      '<button class="vxpri" id="vxLogDone">Done</button>' +
     '</div></div>' +
     '<audio id="vxAudio" playsinline></audio>';
   document.body.appendChild(ov);
@@ -122,6 +139,56 @@
   var buf = new Float32Array(1024);
   var held = "", holds = 0, holdT = null, lastAck = "";   // words kept when you pause mid-thought
   var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
+
+  /* --- the Text screen: everything said, with Copy buttons (and full code, memos, lesson plans made by voice) --- */
+  var log = load("tsa_voice_log");
+  function saveLog() {
+    var keep = log.slice(-30).map(function (e) { return { who: e.who, title: e.title || "", text: String(e.text || "").slice(0, 20000), code: !!e.code }; });
+    save("tsa_voice_log", keep);
+  }
+  function addLog(who, text, title, code) {
+    text = String(text || "").trim(); if (!text) return;
+    log.push({ who: who, text: text, title: title || "", code: !!code });
+    if (log.length > 30) log = log.slice(-30);
+    saveLog();
+    if (!q("vxLog").hidden) renderLog();
+  }
+  function copyTxt(t, btn) {
+    function done() { if (btn) { var o = btn.getAttribute("data-l") || btn.textContent; btn.setAttribute("data-l", o); btn.textContent = "Copied"; setTimeout(function () { btn.textContent = o; }, 1200); } }
+    function fallback() {
+      var ta = document.createElement("textarea"); ta.value = t; ta.style.cssText = "position:fixed;opacity:0;top:0;left:0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta); done();
+    }
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(done, fallback); return; } } catch (e) {}
+    fallback();
+  }
+  function codeOf(t) {
+    var re = /```[a-zA-Z0-9]*\n([\s\S]*?)```/g, m, out = [];
+    while ((m = re.exec(t))) out.push(m[1].replace(/\n$/, ""));
+    return out.join("\n\n");
+  }
+  function renderLog() {
+    var list = q("vxLogList"); list.innerHTML = "";
+    if (!log.length) { list.textContent = "Nothing yet. What you and the AI say will show here, and you can copy it."; return; }
+    log.forEach(function (e) {
+      var d = document.createElement("div"); d.className = "vxi" + (e.code ? " code" : "");
+      var sm = document.createElement("small"); sm.textContent = (e.who === "you" ? "You" : "Tender Sprout AI") + (e.title ? " · " + e.title : "");
+      var pr = document.createElement("pre"); pr.textContent = e.text;
+      d.appendChild(sm); d.appendChild(pr);
+      if (e.who !== "you") {
+        var row = document.createElement("div"); row.className = "vxcp";
+        var cb = document.createElement("button"); cb.textContent = "Copy"; cb.onclick = function () { copyTxt(e.text, cb); };
+        row.appendChild(cb);
+        var cd = e.code ? "" : codeOf(e.text);
+        if (cd) { var cc = document.createElement("button"); cc.textContent = "Copy code"; cc.onclick = function () { copyTxt(cd, cc); }; row.appendChild(cc); }
+        d.appendChild(row);
+      }
+      list.appendChild(d);
+    });
+    list.scrollTop = list.scrollHeight;
+  }
 
   function set(s, text) {
     state = s; ov.dataset.s = s;
@@ -179,7 +246,9 @@
     task: ["Sure thing.", "Alright.", "Okay, on it."],
     good: ["Oh nice!", "That's great!", "Oh wow, nice."],
     sad:  ["Aww.", "Oh no.", "Hmm, I'm sorry to hear that."],
-    wait: ["Let me think.", "Hmm, one moment.", "Just a second."]
+    wait: ["Let me think.", "Hmm, one moment.", "Just a second."],
+    work: ["Sure, I'll put that in your chat.", "Okay, I'll make that in your chat.", "On it. Give me a moment."],
+    ready: ["It's ready. Tap the text button to copy it.", "Done. You can copy it from the text button."]
   };
   function allLines() { var a = [HELLO]; Object.keys(ACKS).forEach(function (c) { a = a.concat(ACKS[c]); }); return a; }
   function fxKey() { return "tsa_voice_fx2_" + (voice || "default"); }
@@ -240,6 +309,13 @@
     var w = t.toLowerCase().replace(/[.?!"')\]]+$/, "").split(/\s+/), last = w[w.length - 1];
     if (w.length === 1) return /^(um+|uh+|hmm+)$/.test(last);
     return HANG.indexOf(last) >= 0;
+  }
+  /* asking for code, a PDF, a lesson plan, a letter...: the chat makes it properly, and you can copy it from the Text screen */
+  var W_VERB = /\b(make|create|write|generate|build|draft|prepare|design|compose|produce|give me|develop|code me)\b/;
+  var W_OBJ = /\b(pdf|code|html|css|javascript|python|website|web ?page|landing page|script|program|app|lesson plan|lesson notes|scheme of work|exam paper|test paper|worksheet|memo|letter|email|essay|report|notice|speech|slides|powerpoint|presentation|timetable|certificate)\b/;
+  function isWork(t) {
+    var s = t.toLowerCase();
+    return (W_VERB.test(s) && W_OBJ.test(s)) || /\b(as|in|into|to) (a )?(pdf|word document)\b/.test(s) || /\b(show|give|send) me (the|that|this) code\b/.test(s);
   }
   function dropHeld() { held = ""; holds = 0; clearTimeout(holdT); }
   function armHold() {                       // you paused mid-thought and never came back: answer what we have
@@ -373,10 +449,37 @@
   /* step 2: react like a person while the answer is being thought up */
   function respond(my, text) {
     dropHeld(); resetUtt(); pre = [];
+    if (isWork(text) && window.tsaVoice && window.tsaVoice.work) { handleWork(my, text); return; }
     var ack = pickFrom(classify(text));
     if (ack) playClip(ack.audio);
     thinkSince = performance.now() + (ack ? 1800 : 0); fillerArmed = true; cont = 0;
     ask(my, text, ack ? ack.text : "", ctl);
+  }
+  async function handleWork(my, text) {
+    var V = window.tsaVoice;
+    addLog("you", text);
+    var a = pickFrom("work", true); if (a) playClip(a.audio);
+    thinkSince = performance.now() + 1800; fillerArmed = true; cont = 0;
+    var r;
+    try { r = await V.work(text); } catch (e) { r = { ok: false, why: String((e && e.message) || e) }; }
+    fillerArmed = false;
+    if (r && r.ok) {
+      (r.blocks || []).forEach(function (b) { addLog("ai", b.text, b.title, b.code); });
+      if (r.pdf) addLog("ai", "Your PDF \"" + r.pdf + "\" is ready. Open your chat and tap the PDF link, then Save as PDF.", "PDF");
+      history.push({ role: "user", content: text }, { role: "assistant", content: "I made it in the chat." });
+      history = history.slice(-16); save("tsa_voice_history", history);
+    }
+    if (my !== turn || !on) return;
+    if (r && r.ok) {
+      var rd = pickFrom("ready", true);
+      if (fxP) await fxP;
+      if (my !== turn || !on) return;
+      if (rd) { set("speak", ""); await playClip(rd.audio); }
+      if (my === turn && on && !paused) { pre = []; listen(); }
+    } else {
+      set("idle", "Error: " + ((r && r.why) || "that did not work"));
+      setTimeout(function () { if (on && !paused && state === "idle") listen(); }, 3500);
+    }
   }
   async function ask(my, text, ack, c) {
     try {
@@ -390,6 +493,7 @@
       history.push({ role: "user", content: text }, { role: "assistant", content: d.reply });
       history = history.slice(-16); save("tsa_voice_history", history);
       if (V && V.turn) { try { V.turn(text, d.reply); } catch (e) {} }          // show it in the chat
+      addLog("you", text); addLog("ai", d.reply);
       if (d.mem) {
         if (V && V.remember) { try { V.remember(d.mem); } catch (e) {} }        // save it in Memory & Learning
         else if (memory.indexOf(d.mem) < 0) { memory.push(d.mem); memory = memory.slice(-30); save("tsa_voice_memory", memory); }
@@ -444,7 +548,12 @@
     if (!on) begin(); else if (paused) pause(); else if (state === "speak" || state === "think") { cancelPending(); pre = []; listen(); }
   };
   q("vxPause").onclick = pause;
-  function close() { end(); ov.hidden = true; q("vxSheet").hidden = true; }
+  q("vxTextBtn").onclick = function () { renderLog(); q("vxLog").hidden = false; };
+  q("vxLogDone").onclick = function () { q("vxLog").hidden = true; };
+  q("vxLog").onclick = function (e) { if (e.target.id === "vxLog") e.target.hidden = true; };
+  q("vxLogClear").onclick = function () { log = []; saveLog(); renderLog(); };
+  q("vxLogChat").onclick = function () { close(); };
+  function close() { end(); ov.hidden = true; q("vxSheet").hidden = true; q("vxLog").hidden = true; }
   q("vxEnd").onclick = close;
   q("vxBack").onclick = close;
   open.onclick = function () { ov.hidden = false; if (!on) begin(); };
