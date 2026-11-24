@@ -381,13 +381,19 @@
   async function ask(my, text, ack, c) {
     try {
       var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
-      var d = await post("/api/voice", { text: text, ack: ack, history: history, memory: memory, lang: lang, langName: name, mode: MODE, spoken: true }, c && c.signal);
+      var V = window.tsaVoice;                                   // the main app (chat + memory), when it is there
+      var mem = (V && V.notes) ? V.notes() : memory;
+      var d = await post("/api/voice", { text: text, ack: ack, history: history, memory: mem, lang: lang, langName: name, mode: MODE, spoken: true }, c && c.signal);
       if (my !== turn) return;
       fillerArmed = false;
       if (!d.reply) { listen(); return; }
       history.push({ role: "user", content: text }, { role: "assistant", content: d.reply });
       history = history.slice(-16); save("tsa_voice_history", history);
-      if (d.mem && memory.indexOf(d.mem) < 0) { memory.push(d.mem); memory = memory.slice(-30); save("tsa_voice_memory", memory); }
+      if (V && V.turn) { try { V.turn(text, d.reply); } catch (e) {} }          // show it in the chat
+      if (d.mem) {
+        if (V && V.remember) { try { V.remember(d.mem); } catch (e) {} }        // save it in Memory & Learning
+        else if (memory.indexOf(d.mem) < 0) { memory.push(d.mem); memory = memory.slice(-30); save("tsa_voice_memory", memory); }
+      }
       resetUtt(); pre = [];
       speakAll(sentences(d.say || d.reply), my);
     } catch (e) {
