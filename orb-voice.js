@@ -98,6 +98,7 @@
       '<h3>Voice settings</h3>' +
       '<label>Language</label><select id="vxLang" aria-label="Language"></select>' +
       '<label>Voice</label><select id="vxVoice" aria-label="Voice"></select>' +
+      '<label>Voice volume: <span id="vxVolV"></span></label><input type="range" id="vxVol" min="50" max="300" step="10" aria-label="Voice volume">' +
       '<div class="vxseg"><button id="vxTest">Test voice</button><button id="vxDel">Remove</button></div>' +
       '<label>Add a voice</label>' +
       '<input id="vxName" placeholder="Name (for example Sarah)" autocomplete="off">' +
@@ -137,6 +138,7 @@
   var ctx, micAn, outAn, stream, srcNode, proc, muteNode, ctl = null, stopFn = null, fxP = null, fxPlaying = false;
   var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, fillerArmed = false;
   var buf = new Float32Array(1024);
+  var auto = 1, gainNode = null, vol = parseInt(get("tsa_voice_vol"), 10) || 100;
   var held = "", holds = 0, holdT = null, bcT = null, lastAck = "";
   var clipN = 0, clipGen = 0, lastClipEnd = 0, fillN = 0, nextFill = 0, listenSince = 0, nudged = false, early = false;   // words kept when you pause mid-thought
   var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
@@ -233,8 +235,12 @@
       var done = false;
       function fin() { if (done) return; done = true; player.onended = null; player.onerror = null; if (stopFn === fin) stopFn = null; res(); }
       stopFn = fin; player.onended = fin; player.onerror = fin;
-      player.src = "data:audio/mpeg;base64," + b64;
-      player.play().catch(fin);
+      levelOf(b64).then(function (m) {
+        if (done) return;
+        auto = m; applyVol();
+        player.src = "data:audio/mpeg;base64," + b64;
+        player.play().catch(fin);
+      });
     });
   }
   function stopPlayback() { try { player.pause(); } catch (e) {} if (stopFn) { var f = stopFn; stopFn = null; f(); } }
@@ -363,6 +369,31 @@
     if (n === "NotReadableError" || n === "TrackStartError") return "Microphone is busy. Close other apps using the mic (calls, recorders), then tap again.";
     return "Error: voice could not start (" + (n || "unknown") + (m ? ": " + m : "") + "). Tap the orb to try again.";
   }
+  function levelOf(b64) {                   // how much to lift or lower this clip so every voice sounds equally loud
+    if (!ctx || !gainNode) return Promise.resolve(1);
+    try {
+      var bin = atob(b64), u = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      return ctx.decodeAudioData(u.buffer).then(function (buf) {
+        var d = buf.getChannelData(0), n = d.length, step = Math.max(1, Math.floor(n / 20000)), sum = 0, c = 0;
+        for (var k = 0; k < n; k += step) { sum += d[k] * d[k]; c++; }
+        var rms = Math.sqrt(sum / (c || 1));
+        return rms > 0.001 ? Math.max(0.5, Math.min(4, 0.12 / rms)) : 1;
+      }).catch(function () { return 1; });
+    } catch (e) { return Promise.resolve(1); }
+  }
+  function applyVol() { if (gainNode) gainNode.gain.value = vol / 100 * auto; }
+  function initAudio() {                     // voice goes: player -> (meter) -> volume -> limiter -> speaker
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    outAn = ctx.createAnalyser(); outAn.fftSize = 1024;
+    try {
+      gainNode = ctx.createGain(); applyVol();
+      var lim = ctx.createDynamicsCompressor();
+      ctx.createMediaElementSource(player).connect(outAn);
+      outAn.connect(gainNode); gainNode.connect(lim); lim.connect(ctx.destination);
+    } catch (x) { outAn = null; gainNode = null; }
+  }
   async function begin() {
     try {
       if (typeof rec !== "undefined" && rec) { try { rec.stop(); } catch (x) {} }
@@ -377,12 +408,7 @@
     }
     try {
       var warm = ensureFx();
-      if (!ctx) {
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-        outAn = ctx.createAnalyser(); outAn.fftSize = 1024;
-        try { ctx.createMediaElementSource(player).connect(outAn); outAn.connect(ctx.destination); }
-        catch (x) { outAn = null; }
-      }
+      initAudio();
       await ctx.resume();
       player.src = SILENCE; player.play().catch(function () {});
       micAn = ctx.createAnalyser(); micAn.fftSize = 1024;
@@ -616,10 +642,13 @@
     if (!voice) return;
     voices = voices.filter(function (v) { return v.id !== voice; }); save("tsa_voice_voices", voices); setVoice(""); drawVoices();
   };
+  q("vxVol").value = vol; q("vxVolV").textContent = vol + "%";
+  q("vxVol").oninput = function () { vol = parseInt(q("vxVol").value, 10) || 100; q("vxVolV").textContent = vol + "%"; put("tsa_voice_vol", String(vol)); applyVol(); };
   q("vxTest").onclick = async function () {
     q("vxMsg").textContent = "Loading voice…";
     try {
       var v = await post("/api/speak", { text: "Hello! This is how I sound.", voice: voice });
+      try { initAudio(); await ctx.resume(); auto = await levelOf(v.audio); applyVol(); } catch (x) {}
       player.src = "data:audio/mpeg;base64," + v.audio; await player.play(); q("vxMsg").textContent = "";
     } catch (e) { q("vxMsg").textContent = e.message; }
   };
