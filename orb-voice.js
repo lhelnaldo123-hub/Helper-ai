@@ -120,10 +120,11 @@
   var ctx, micAn, outAn, stream, srcNode, proc, muteNode, ctl = null, stopFn = null, fxP = null, fxPlaying = false;
   var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, thinkSince = 0, fillerArmed = false;
   var buf = new Float32Array(1024);
+  var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
 
   function set(s, text) {
     state = s; ov.dataset.s = s;
-    if (text !== undefined) { var e = q("vxSt"); e.textContent = text; e.classList.toggle("on", /^(Error|Microphone|No internet)/.test(text)); }
+    if (text !== undefined) { var e = q("vxSt"); e.textContent = text; e.classList.toggle("on", /^(Error|Microphone|No internet|No microphone)/.test(text)); }
   }
   function level(an) {
     an.getFloatTimeDomainData(buf);
@@ -197,18 +198,37 @@
   function startTalk() { talking = true; utt = pre.slice(); pre = []; }
   function cancelPending() { turn++; if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } fillerArmed = false; stopPlayback(); fxPlaying = false; }
 
+  function micMessage(e) {
+    var n = (e && e.name) || "", m = (e && e.message) || "";
+    if (!window.isSecureContext) return "Microphone blocked. This page must open over https.";
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return "Microphone blocked. This browser can't use the mic here. Open the site in Chrome or Safari.";
+    if (n === "NotAllowedError" || n === "PermissionDeniedError" || n === "SecurityError") return "Microphone blocked. Allow mic access for this site in your phone/browser settings, then tap the orb again.";
+    if (n === "NotFoundError" || n === "DevicesNotFoundError") return "No microphone found on this device.";
+    if (n === "NotReadableError" || n === "TrackStartError") return "Microphone is busy. Close other apps using the mic (calls, recorders), then tap again.";
+    return "Error: voice could not start (" + (n || "unknown") + (m ? ": " + m : "") + "). Tap the orb to try again.";
+  }
   async function begin() {
+    try {
+      if (typeof rec !== "undefined" && rec) { try { rec.stop(); } catch (x) {} }
+    } catch (x) {}
+    try {
+      // ask for the mic first, while the tap is still fresh
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw { name: "NoMediaDevices" };
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (e) {
+      set("idle", micMessage(e));
+      return;
+    }
     try {
       var warm = makeFx();
       if (!ctx) {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         outAn = ctx.createAnalyser(); outAn.fftSize = 1024;
-        ctx.createMediaElementSource(player).connect(outAn);
-        outAn.connect(ctx.destination);
+        try { ctx.createMediaElementSource(player).connect(outAn); outAn.connect(ctx.destination); }
+        catch (x) { outAn = null; }
       }
       await ctx.resume();
       player.src = SILENCE; player.play().catch(function () {});
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       micAn = ctx.createAnalyser(); micAn.fftSize = 1024;
       srcNode = ctx.createMediaStreamSource(stream); srcNode.connect(micAn);
       proc = ctx.createScriptProcessor(4096, 1, 1); srcNode.connect(proc);
@@ -221,7 +241,9 @@
       if (hp) { set("speak", ""); await hp; }
       if (on && !paused && state !== "listen") listen();
     } catch (e) {
-      set("idle", "Microphone blocked. Allow mic access and tap again.");
+      if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+      on = false;
+      set("idle", "Error: voice could not start (" + ((e && e.name) || "unknown") + ((e && e.message) ? ": " + e.message : "") + "). Tap the orb to try again.");
     }
   }
   function end() {
@@ -241,7 +263,7 @@
     var dt = Math.min(100, now - lastT); lastT = now;
     if (!paused && micAn) {
       var mic = level(micAn);
-      setLevel((state === "speak" ? level(outAn) : state === "listen" ? mic : 0).toFixed(3));
+      setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
       if (state === "listen") {
         if (mic > T_ON) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
         else if (talking && speechStart && now - lastVoice > END_MS) submit();
