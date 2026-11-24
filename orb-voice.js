@@ -61,7 +61,7 @@
     ".vxcard label{font-size:.8rem;color:var(--muted);margin-top:.35rem}",
     ".vxcard select,.vxcard input{width:100%;border:1px solid var(--line);background:var(--btn);color:inherit;border-radius:12px;padding:.7rem .8rem;font:inherit}",
     ".vxcard button{border:1px solid var(--line);background:var(--btn);border-radius:12px;padding:.65rem .9rem;flex:1}",
-    ".vxcard .vxpri{background:var(--c2);color:#fff;border:0}",
+    "#vxOv .vxcard .vxpri{background:var(--c2);color:#fff;border:0}",
     ".vxseg{display:flex;gap:.5rem}",
     "#vxMsg{font-size:.85rem;color:var(--muted);min-height:1.2em}",
     ".vxhelp{font-size:.8rem;color:var(--muted);line-height:1.4;margin:0}",
@@ -111,13 +111,14 @@
   else { var h = document.querySelector("header") || document.body; h.appendChild(open); }
 
   /* ---------- voice engine ---------- */
-  var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-  var TYPES = [["audio/webm;codecs=opus", "webm"], ["audio/mp4", "mp4"], ["audio/ogg", "ogg"]];
-  var pick = TYPES.filter(function (t) { return window.MediaRecorder && MediaRecorder.isTypeSupported(t[0]); })[0] || ["", "webm"];
-  var mime = pick[0], ext = pick[1];
+  var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
+  var T_ON = 0.12, T_BARGE = 0.30;      // how loud counts as "you are talking" / "you are interrupting"
+  var END_MS = 800;                     // silence that ends your turn
+  var PRE_BLOCKS = 6;                   // keeps the last half second so first words are never lost
 
-  var state = "idle", on = false, paused = false, ctx, micAn, outAn, stream, rec, chunks = [];
-  var speechStart = 0, lastVoice = 0, turn = 0;
+  var state = "idle", on = false, paused = false, turn = 0;
+  var ctx, micAn, outAn, stream, srcNode, proc, muteNode, ctl = null, stopFn = null, fxP = null, fxPlaying = false;
+  var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, thinkSince = 0, fillerArmed = false;
   var buf = new Float32Array(1024);
 
   function set(s, text) {
@@ -131,8 +132,74 @@
   }
   function setLevel(v) { ov.style.setProperty("--l", v); }
 
+  /* --- recording straight from the mic (no MediaRecorder, so we can keep a pre-roll and resend) --- */
+  function onAudio(e) {
+    if (!on || paused) return;
+    var inp = e.inputBuffer.getChannelData(0), ratio = ctx.sampleRate / SR, n = Math.floor(inp.length / ratio), out = new Int16Array(n);
+    for (var i = 0; i < n; i++) {
+      var a = Math.floor(i * ratio), b = Math.min(inp.length, Math.floor((i + 1) * ratio)), s = 0, c = 0;
+      for (var j = a; j < b; j++) { s += inp[j]; c++; }
+      var v = c ? s / c : 0; out[i] = Math.max(-1, Math.min(1, v)) * 32767;
+    }
+    if (talking) { utt.push(out); if (utt.length > 700 && state === "listen") submit(); }
+    else { pre.push(out); if (pre.length > PRE_BLOCKS) pre.shift(); }
+  }
+  function wavB64(blocks) {
+    var len = 0; blocks.forEach(function (b) { len += b.length; });
+    var buffer = new ArrayBuffer(44 + len * 2), dv = new DataView(buffer);
+    function str(o, t) { for (var i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); }
+    str(0, "RIFF"); dv.setUint32(4, 36 + len * 2, true); str(8, "WAVE"); str(12, "fmt "); dv.setUint32(16, 16, true);
+    dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
+    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, "data"); dv.setUint32(40, len * 2, true);
+    var o = 44; blocks.forEach(function (b) { for (var i = 0; i < b.length; i++) { dv.setInt16(o, b[i], true); o += 2; } });
+    var bytes = new Uint8Array(buffer), s = "";
+    for (var k = 0; k < bytes.length; k += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(k, k + 0x8000));
+    return btoa(s);
+  }
+
+  /* --- playing sound --- */
+  function playB64(b64) {
+    return new Promise(function (res) {
+      var done = false;
+      function fin() { if (done) return; done = true; player.onended = null; player.onerror = null; if (stopFn === fin) stopFn = null; res(); }
+      stopFn = fin; player.onended = fin; player.onerror = fin;
+      player.src = "data:audio/mpeg;base64," + b64;
+      player.play().catch(fin);
+    });
+  }
+  function stopPlayback() { try { player.pause(); } catch (e) {} if (stopFn) { var f = stopFn; stopFn = null; f(); } }
+
+  /* --- short spoken extras ("I'm listening", "Okay, one moment"), made once per voice and kept on the phone --- */
+  var FX_LINES = { hello: "Okay, I'm listening.", fill: ["Mm-hm.", "Okay, one moment.", "Let me think."] };
+  function fxKey() { return "tsa_voice_fx_" + (voice || "default"); }
+  function getFx() { try { return JSON.parse(localStorage.getItem(fxKey())); } catch (e) { return null; } }
+  var fxMaking = {};
+  function makeFx() {
+    var k = fxKey(); if (getFx() || fxMaking[k]) return fxMaking[k] || Promise.resolve();
+    var all = [FX_LINES.hello].concat(FX_LINES.fill);
+    fxMaking[k] = Promise.all(all.map(function (t) { return post("/api/speak", { text: t, voice: voice }).then(function (r) { return r.audio; }); }))
+      .then(function (a) { try { localStorage.setItem(k, JSON.stringify({ hello: a[0], fill: a.slice(1) })); } catch (e) {} })
+      .catch(function () {}).then(function () { delete fxMaking[k]; });
+    return fxMaking[k];
+  }
+  function playFx(kind) {
+    var fx = getFx(); if (!fx) return null;
+    var clip = kind === "hello" ? fx.hello : fx.fill[Math.floor(Math.random() * fx.fill.length)];
+    if (!clip) return null;
+    fxPlaying = true;
+    fxP = playB64(clip).then(function () { fxPlaying = false; fxP = null; });
+    return fxP;
+  }
+
+  /* --- turn taking --- */
+  function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; }
+  function listen() { resetUtt(); bargeMs = 0; fillerArmed = false; set("listen", ""); }
+  function startTalk() { talking = true; utt = pre.slice(); pre = []; }
+  function cancelPending() { turn++; if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } fillerArmed = false; stopPlayback(); fxPlaying = false; }
+
   async function begin() {
     try {
+      var warm = makeFx();
       if (!ctx) {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         outAn = ctx.createAnalyser(); outAn.fftSize = 1024;
@@ -141,90 +208,131 @@
       }
       await ctx.resume();
       player.src = SILENCE; player.play().catch(function () {});
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
       micAn = ctx.createAnalyser(); micAn.fftSize = 1024;
-      ctx.createMediaStreamSource(stream).connect(micAn);
-      on = true; paused = false; listen(); tick();
+      srcNode = ctx.createMediaStreamSource(stream); srcNode.connect(micAn);
+      proc = ctx.createScriptProcessor(4096, 1, 1); srcNode.connect(proc);
+      muteNode = ctx.createGain(); muteNode.gain.value = 0; proc.connect(muteNode); muteNode.connect(ctx.destination);
+      proc.onaudioprocess = onAudio;
+      on = true; paused = false; pre = []; resetUtt(); lastT = performance.now();
+      requestAnimationFrame(tick);
+      await Promise.race([warm, new Promise(function (r) { setTimeout(r, 1500); })]);
+      var hp = on ? playFx("hello") : null;
+      if (hp) { set("speak", ""); await hp; }
+      if (on && !paused && state !== "listen") listen();
     } catch (e) {
       set("idle", "Microphone blocked. Allow mic access and tap again.");
     }
   }
-  function stopRec() { try { if (rec && rec.state !== "inactive") { rec.onstop = null; rec.stop(); } } catch (e) {} }
   function end() {
-    on = false; paused = false; turn++; stopRec();
+    on = false; paused = false; cancelPending(); resetUtt();
+    try { if (proc) { proc.onaudioprocess = null; proc.disconnect(); } if (srcNode) srcNode.disconnect(); } catch (e) {}
     if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
-    player.pause(); setLevel(0);
-    q("vxPause").textContent = "Pause"; set("idle", "");
+    setLevel(0); q("vxPause").textContent = "Pause"; set("idle", "");
   }
   function pause() {
     if (!on) return;
-    if (!paused) { paused = true; player.pause(); stopRec(); setLevel(0); q("vxPause").textContent = "Resume"; set("idle", ""); }
-    else { paused = false; q("vxPause").textContent = "Pause"; listen(); }
+    if (!paused) { paused = true; cancelPending(); resetUtt(); setLevel(0); q("vxPause").textContent = "Resume"; set("idle", ""); }
+    else { paused = false; q("vxPause").textContent = "Pause"; pre = []; listen(); }
   }
-  function listen() {
-    chunks = []; speechStart = 0;
-    rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
-    rec.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
-    rec.start(); set("listen", "");
-  }
-  function finish() {
-    var spoke = lastVoice - speechStart;
-    rec.onstop = function () { if (spoke < 400) listen(); else sendBlob(new Blob(chunks, { type: rec.mimeType })); };
-    set("think", ""); rec.stop();
-  }
-  function tick() {
+
+  function tick(now) {
     if (!on) return;
-    var now = performance.now(), mic = level(micAn);
-    setLevel((state === "speak" ? level(outAn) : state === "listen" ? mic : 0).toFixed(3));
-    if (state === "listen") {
-      if (mic > 0.12) { if (!speechStart) speechStart = now; lastVoice = now; }
-      else if (speechStart && now - lastVoice > 900) finish();
-    } else if (state === "speak" && mic > 0.35) { player.pause(); listen(); }   // you interrupted
+    var dt = Math.min(100, now - lastT); lastT = now;
+    if (!paused && micAn) {
+      var mic = level(micAn);
+      setLevel((state === "speak" ? level(outAn) : state === "listen" ? mic : 0).toFixed(3));
+      if (state === "listen") {
+        if (mic > T_ON) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
+        else if (talking && speechStart && now - lastVoice > END_MS) submit();
+      } else if (state === "think") {
+        // you kept talking: forget the early answer and keep listening
+        if (!fxPlaying) { if (mic > T_ON) cont += dt; else cont = Math.max(0, cont - dt); }
+        if (cont >= 140) { cancelPending(); cont = 0; lastVoice = now; set("listen", ""); }
+        else if (fillerArmed && now - thinkSince > 1600) { fillerArmed = false; playFx("fill"); }
+      } else if (state === "speak") {
+        if (mic > T_BARGE) bargeMs += dt; else bargeMs = Math.max(0, bargeMs - dt * 2);
+        if (bargeMs >= 260) {                 // you interrupted
+          bargeMs = 0; cancelPending(); startTalk(); speechStart = now - 300; lastVoice = now; cont = 0; set("listen", "");
+        }
+      }
+    }
     requestAnimationFrame(tick);
   }
 
-  async function post(path, body) {
-    var r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  function submit() {
+    var spoke = lastVoice - speechStart;
+    if (spoke < 350) { resetUtt(); return; }          // just a noise
+    var my = ++turn, audio = wavB64(utt);
+    ctl = (window.AbortController ? new AbortController() : null);
+    set("think", ""); thinkSince = performance.now(); fillerArmed = true; cont = 0;
+    ask(my, audio, ctl);
+  }
+  async function ask(my, audio, c) {
+    try {
+      var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
+      var d = await post("/api/voice", { audio: audio, ext: "wav", history: history, memory: memory, lang: lang, langName: name, mode: MODE, spoken: true }, c && c.signal);
+      if (my !== turn) return;
+      fillerArmed = false;
+      if (!d.reply) { listen(); return; }
+      history.push({ role: "user", content: d.user }, { role: "assistant", content: d.reply });
+      history = history.slice(-16); save("tsa_voice_history", history);
+      if (d.mem && memory.indexOf(d.mem) < 0) { memory.push(d.mem); memory = memory.slice(-30); save("tsa_voice_memory", memory); }
+      resetUtt(); pre = [];
+      speakAll(sentences(d.say || d.reply), my);
+    } catch (e) {
+      if (e.name === "AbortError" || my !== turn) return;
+      fillerArmed = false; resetUtt();
+      set("idle", "Error: " + (navigator.onLine ? e.message : "No internet. I need to be online to talk."));
+      setTimeout(function () { if (on && !paused && state === "idle") listen(); }, 3000);
+    }
+  }
+  function sentences(t) {
+    t = String(t).replace(/\s+/g, " ").trim();
+    var m = t.match(/[^.!?…]+[.!?…]+["')\]]*|[^.!?…]+$/g) || [t], out = [], cur = "";
+    m.forEach(function (s) { cur += (cur ? " " : "") + s.trim(); if (cur.length >= 28) { out.push(cur); cur = ""; } });
+    if (cur) { if (out.length) out[out.length - 1] += " " + cur; else out.push(cur); }
+    if (out.length > 5) out = out.slice(0, 4).concat(out.slice(4).join(" "));
+    return out;
+  }
+  async function speakAll(parts, my) {
+    var jobs = [];
+    function fetchAt(i) { if (i < parts.length && !jobs[i]) { jobs[i] = post("/api/speak", { text: parts[i], voice: voice }); jobs[i].catch(function () {}); } }
+    fetchAt(0); fetchAt(1);
+    try {
+      if (fxP) await fxP;
+      for (var i = 0; i < parts.length; i++) {
+        var v = await jobs[i];
+        if (my !== turn || !on || paused) return;
+        fetchAt(i + 1); fetchAt(i + 2);
+        set("speak", "");
+        await playB64(v.audio);
+        if (my !== turn) return;                 // you interrupted
+      }
+      if (my === turn && on && !paused) { pre = []; listen(); }
+    } catch (e) {
+      if (my !== turn) return;
+      set("idle", "Error: " + (navigator.onLine ? e.message : "No internet. I need to be online to talk."));
+      setTimeout(function () { if (on && !paused && state === "idle") listen(); }, 3000);
+    }
+  }
+
+  async function post(path, body, signal) {
+    var r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: signal });
     var d = {}; try { d = await r.json(); } catch (e) {}
     if (!r.ok) throw new Error(d.error || "Request failed");
     return d;
   }
-  function sendBlob(blob) {
-    var f = new FileReader();
-    f.onload = function () { send(f.result.split(",")[1]); };
-    f.readAsDataURL(blob);
-  }
-  async function send(audio) {
-    var my = ++turn;
-    try {
-      var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
-      var d = await post("/api/voice", { audio: audio, ext: ext, history: history, memory: memory, lang: lang, langName: name, mode: MODE });
-      if (my !== turn) return;
-      if (!d.reply) { if (on && !paused) listen(); return; }
-      history.push({ role: "user", content: d.user }, { role: "assistant", content: d.reply + "\nSAY: " + d.say });
-      history = history.slice(-16); save("tsa_voice_history", history);
-      if (d.mem && memory.indexOf(d.mem) < 0) { memory.push(d.mem); memory = memory.slice(-30); save("tsa_voice_memory", memory); }
-      if (!on || paused) return;
-      var v = await post("/api/speak", { text: d.say || d.reply, voice: voice });
-      if (my !== turn || !on || paused) return;
-      player.src = "data:audio/mpeg;base64," + v.audio;
-      set("speak", ""); await player.play();
-    } catch (e) {
-      set("idle", "Error: " + (navigator.onLine ? e.message : "No internet. I need to be online to talk."));
-      if (on && !paused) setTimeout(function () { if (on && !paused) listen(); }, 3000);
-    }
-  }
 
-  player.onended = function () { if (on && !paused && state === "speak") listen(); };
   q("vxOrb").onclick = function () {
-    if (!on) begin(); else if (paused) pause(); else if (state === "speak") { player.pause(); listen(); }
+    if (!on) begin(); else if (paused) pause(); else if (state === "speak" || state === "think") { cancelPending(); pre = []; listen(); }
   };
   q("vxPause").onclick = pause;
   function close() { end(); ov.hidden = true; q("vxSheet").hidden = true; }
   q("vxEnd").onclick = close;
   q("vxBack").onclick = close;
   open.onclick = function () { ov.hidden = false; if (!on) begin(); };
-  document.addEventListener("visibilitychange", function () { if (document.hidden && on) pause(); });
+  document.addEventListener("visibilitychange", function () { if (document.hidden && on && !paused) pause(); });
 
   /* ---------- settings sheet ---------- */
   var ls = q("vxLang");
