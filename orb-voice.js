@@ -191,7 +191,7 @@
   /* ---------- voice engine ---------- */
   var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
   var T_ON = 0.12, T_BARGE = 0.16;      // quietest levels that count as "you are talking" / "you are interrupting"
-  var noiseFloor = 0, calUntil = 0;     // background noise level the mic hears in this room; the real thresholds sit above it
+  var noiseFloor = 0, calUntil = 0, loudMs = 0, peakL = 0;   // loudMs / peakL: how much real voice-like sound this turn contained     // background noise level the mic hears in this room; the real thresholds sit above it
   function onT() { return Math.min(0.6, Math.max(T_ON, noiseFloor * 1.6 + 0.04)); }
   function bargeT() { return onT() + (T_BARGE - T_ON); }
   var END_MS = 700;                     // (kept for reference) the real wait now comes from PATS below
@@ -452,7 +452,7 @@
   }
 
   /* --- turn taking --- */
-  function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; }
+  function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; loudMs = 0; peakL = 0; }
   function listen() { resetUtt(); bargeMs = 0; fillerArmed = false; clearTimeout(bcT); listenSince = performance.now(); nudged = false; set("listen", ""); }
   function startTalk() { talking = true; utt = pre.slice(); pre = []; clearTimeout(holdT); clearTimeout(bcT); if (fxPlaying) cancelClips(); }
   function cancelPending() { turn++; if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } fillerArmed = false; cancelClips(); }
@@ -509,7 +509,11 @@
       await ctx.resume();
       player.src = SILENCE; player.play().catch(function () {});
       micAn = ctx.createAnalyser(); micAn.fftSize = 1024;
-      srcNode = ctx.createMediaStreamSource(stream); srcNode.connect(micAn);
+      srcNode = ctx.createMediaStreamSource(stream);
+      /* the loudness meter only listens to the range of the human voice, so traffic rumble and hiss count for less (the recording itself is not filtered) */
+      var hpf = ctx.createBiquadFilter(); hpf.type = "highpass"; hpf.frequency.value = 180;
+      var lpf = ctx.createBiquadFilter(); lpf.type = "lowpass"; lpf.frequency.value = 3800;
+      srcNode.connect(hpf); hpf.connect(lpf); lpf.connect(micAn);
       proc = ctx.createScriptProcessor(4096, 1, 1); srcNode.connect(proc);
       muteNode = ctx.createGain(); muteNode.gain.value = 0; proc.connect(muteNode); muteNode.connect(ctx.destination);
       proc.onaudioprocess = onAudio;
@@ -553,7 +557,7 @@
       setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
       if (calibrating) { /* measuring the room: just a moment */ }
       else if (state === "listen") {
-        if (mic > (fxPlaying ? bargeT() : onT())) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
+        if (mic > (fxPlaying ? bargeT() : onT())) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; loudMs += dt; if (mic > peakL) peakL = mic; }
         else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? PATS[pat][1] : PATS[pat][0]) + padMs) submit();
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
@@ -578,7 +582,7 @@
 
   function submit() {
     var spoke = lastVoice - speechStart;
-    if (spoke < 350) { resetUtt(); if (held) armHold(); return; }          // just a noise
+    if (spoke < 350 || loudMs < 300 || peakL < onT() * 1.3) { resetUtt(); pre = []; if (held) armHold(); return; }          // just a noise: too short, or never clearly louder than the room
     var my = ++turn, audio = wavB64(utt);
     ctl = (window.AbortController ? new AbortController() : null);
     set("think", ""); cont = 0; early = false;
