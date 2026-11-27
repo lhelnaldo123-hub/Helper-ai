@@ -190,7 +190,10 @@
 
   /* ---------- voice engine ---------- */
   var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
-  var T_ON = 0.12, T_BARGE = 0.16;      // how loud counts as "you are talking" / "you are interrupting"
+  var T_ON = 0.12, T_BARGE = 0.16;      // quietest levels that count as "you are talking" / "you are interrupting"
+  var noiseFloor = 0, calUntil = 0;     // background noise level the mic hears in this room; the real thresholds sit above it
+  function onT() { return Math.min(0.6, Math.max(T_ON, noiseFloor * 1.6 + 0.04)); }
+  function bargeT() { return onT() + (T_BARGE - T_ON); }
   var END_MS = 700;                     // (kept for reference) the real wait now comes from PATS below
   var PATS = { quick: [500, 800], normal: [700, 1000], patient: [1100, 1500] };   // [silence that ends a turn, same after very short speech] in ms
   var pat = get("tsa_voice_pat"); if (!PATS[pat]) pat = "normal";
@@ -510,7 +513,7 @@
       proc = ctx.createScriptProcessor(4096, 1, 1); srcNode.connect(proc);
       muteNode = ctx.createGain(); muteNode.gain.value = 0; proc.connect(muteNode); muteNode.connect(ctx.destination);
       proc.onaudioprocess = onAudio;
-      on = true; paused = false; pre = []; resetUtt(); lastT = performance.now();
+      on = true; paused = false; pre = []; resetUtt(); lastT = performance.now(); noiseFloor = 0; calUntil = 0;
       requestAnimationFrame(tick);
       await Promise.race([warm, new Promise(function (r) { setTimeout(r, 1500); })]);
       var hp = on && !quiet ? playClip(pickHello()) : null;
@@ -539,13 +542,22 @@
     var dt = Math.min(100, now - lastT); lastT = now;
     if (!paused && micAn) {
       var mic = level(micAn);
+      /* learn the room's background noise so a TV, fan or crowd is not mistaken for you talking */
+      if (!calUntil) calUntil = now + 800;
+      var calibrating = now < calUntil;
+      if (calibrating) noiseFloor += (mic - noiseFloor) * Math.min(1, dt / 150);
+      else if (state === "listen" || state === "think") {
+        var nfRate = talking ? 0.0001 : (mic > noiseFloor ? 0.0015 : 0.01);   // slow to rise while you speak, quick to fall
+        noiseFloor = Math.min(0.45, noiseFloor + (mic - noiseFloor) * Math.min(1, nfRate * dt));
+      }
       setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
-      if (state === "listen") {
-        if (mic > (fxPlaying ? T_BARGE : T_ON)) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
+      if (calibrating) { /* measuring the room: just a moment */ }
+      else if (state === "listen") {
+        if (mic > (fxPlaying ? bargeT() : onT())) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
         else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? PATS[pat][1] : PATS[pat][0]) + padMs) submit();
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
-        if (!fxPlaying) { if (mic > T_ON) cont += dt; else cont = Math.max(0, cont - dt); }
+        if (!fxPlaying) { if (mic > onT()) cont += dt; else cont = Math.max(0, cont - dt); }
         if (cont >= 140) { if (pendingUser) { carry = pendingUser; } cancelPending(); cont = 0; lastVoice = now; set("listen", ""); }
         else if (fillerArmed && !fxPlaying && now >= nextFill) {     // still working: a short "let's see..." now and then
           fillN++; var fl = pickFrom(fillN === 1 ? "wait" : "wait2", true);
@@ -554,7 +566,7 @@
         }
       } else if (state === "speak") {
         lastOut = outAn ? level(outAn) : 0;
-        var bt = T_BARGE + lastOut * 0.35;   // louder AI voice = a little higher bar, so its own echo never counts as you
+        var bt = bargeT() + lastOut * 0.35;   // louder AI voice = a little higher bar, so its own echo never counts as you
         if (mic > bt) bargeMs += dt; else bargeMs = Math.max(0, bargeMs - dt * 2);
         if (bargeMs >= 180) {                 // you interrupted
           bargeMs = 0; markInterrupted(); cancelPending(); startTalk(); speechStart = now - 300; lastVoice = now; cont = 0; set("listen", "");
