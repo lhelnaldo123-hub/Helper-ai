@@ -286,22 +286,18 @@
   function stopPlayback() { try { player.pause(); } catch (e) {} if (stopFn) { var f = stopFn; stopFn = null; f(); } }
 
   /* --- short spoken reactions ("Mm-hm", "Oh nice!", "Good question."), made once per voice and kept on the phone --- */
-  var HELLO = "Okay, I'm listening.";
+  var HELLOS = ["Hey there! What can I do for you today?", "Hi! What are we working on today?", "Hello! How can I help you today?", "Hey, good to hear from you. What can I do for you?", "Hi there! What would you like to do today?", "Hey! What's on your mind today?"];
   var ACKS = {
-    early: ["Mm-hm.", "Okay.", "Right.", "I see.", "Okay, okay."],
-    listen: ["Mm-hm, I'm listening.", "Okay... I'm listening.", "Go on, I'm listening.", "Take your time, I'm listening."],
-    wait: ["Let me think.", "Hmm, let's see.", "Just a second.", "Let's see..."],
-    ok:   ["Mm-hm.", "Aha.", "Okay.", "Right.", "I see.", "Okay, got it."],
-    ask:  ["Good question.", "Sure.", "Okay."],
-    task: ["Sure thing.", "Alright.", "Okay, on it."],
-    wait2: ["Almost there.", "Just a little more.", "Okay, nearly done.", "Thanks for waiting."],
-    nudge: ["I'm still here. Take your time.", "Okay, I'm listening whenever you're ready."],
-    work: ["Sure, I'll put that in your chat.", "Okay, I'll make that in your chat.", "On it. Give me a moment."],
+    wait: ["Let me think about that.", "One moment.", "Let me check."],
+    ask:  ["Good question.", "Sure."],
+    task: ["Sure thing.", "Alright, on it."],
+    wait2: ["Almost there.", "Just a little more.", "Thanks for waiting."],
+    work: ["Sure, I'll put that in your chat.", "On it. Give me a moment."],
     ready: ["It's ready. Tap the text button to copy it.", "Done. You can copy it from the text button."],
     good: ["Oh nice!", "That's great!", "Oh wow, nice."],
     sad:  ["Aww.", "Oh no.", "Hmm, I'm sorry to hear that."]
   };
-  function allLines() { var a = [HELLO]; Object.keys(ACKS).forEach(function (c) { a = a.concat(ACKS[c]); }); return a; }
+  function allLines() { var a = HELLOS.slice(); Object.keys(ACKS).forEach(function (c) { a = a.concat(ACKS[c]); }); return a; }
   function fxKey() { return "tsa_voice_fx2_" + (voice || "default"); }
   var fxMem = null, fxBusy = {};
   function fxLoad() {
@@ -313,16 +309,18 @@
   function ensureFx() {                      // returns a promise that is ready as soon as the "I'm listening" clip exists
     var k = fxKey(), store = fxLoad();
     var todo = allLines().filter(function (t) { return !store[t]; });
+    todo.sort(function () { return Math.random() - 0.5; });
+    todo.sort(function (a, b) { return (HELLOS.indexOf(b) >= 0) - (HELLOS.indexOf(a) >= 0); });
     if (!todo.length) return Promise.resolve();
     if (fxBusy[k]) return fxBusy[k];
-    var helloDone, helloP = store[HELLO] ? Promise.resolve() : new Promise(function (r) { helloDone = r; });
+    var helloDone, helloP = HELLOS.some(function (h) { return store[h]; }) ? Promise.resolve() : new Promise(function (r) { helloDone = r; });
     fxBusy[k] = helloP;
     function next() {
       var t = todo.shift(); if (!t) return Promise.resolve();
       return post("/api/speak", { text: t, voice: voice }).then(function (r) {
         store[t] = r.audio; try { localStorage.setItem(k, JSON.stringify(store)); } catch (e) {}
-        if (t === HELLO && helloDone) helloDone();
-      }).catch(function () { if (t === HELLO && helloDone) helloDone(); }).then(next);
+        if (HELLOS.indexOf(t) >= 0 && helloDone) helloDone();
+      }).catch(function () {}).then(next);
     }
     Promise.all([next(), next()]).then(function () { delete fxBusy[k]; if (helloDone) helloDone(); });
     return helloP;
@@ -338,10 +336,19 @@
     return fxP;
   }
   function cancelClips() { clipGen++; clipN = 0; fxP = null; fxPlaying = false; stopPlayback(); }
+  function pickHello() {                    // a different opening line each time you open it
+    var store = fxLoad(), last = get("tsa_voice_lasthello");
+    var all = HELLOS.filter(function (h) { return store[h]; });
+    var opts = all.filter(function (h) { return h !== last; });
+    if (!opts.length) opts = all;
+    if (!opts.length) return null;
+    var h = opts[Math.floor(Math.random() * opts.length)]; put("tsa_voice_lasthello", h);
+    return store[h];
+  }
   function armFiller(ms) { fillerArmed = true; fillN = 0; nextFill = performance.now() + ms; }
   function pickFrom(kind, skipRandom) {
     if (!kind) return null;
-    if (!skipRandom && Math.random() > 0.8) return null;          // sometimes just answer, like a real person
+    if (!skipRandom && Math.random() > 0.3) return null;          // mostly just answer, like a real person
     var store = fxLoad();
     var opts = (ACKS[kind] || []).filter(function (t) { return store[t] && t !== lastAck; });
     if (!opts.length) return null;
@@ -385,14 +392,7 @@
     }, 4500);
   }
   /* you paused or said "emm...": after a short wait, say "okay, I'm listening" so you know it is still with you */
-  function armBC() {
-    clearTimeout(bcT);
-    bcT = setTimeout(function () {
-      if (!held || !on || paused || state !== "listen" || talking || fxPlaying) return;
-      if (performance.now() - lastClipEnd < 2500) return;
-      var c = pickFrom("listen", true); if (c) playClip(c.audio);
-    }, 1300);
-  }
+  function armBC() { clearTimeout(bcT); }          // stay quiet while you think. It waits for you.
 
   /* --- remembering the job when you interrupt --- */
   var STOPRE = /^(ok(ay)?[, ]*)?(stop|wait|hold on|hold up|pause|enough|cancel|never ?mind|be quiet|quiet|shut up)\b[ .!,]*$/i;
@@ -478,7 +478,7 @@
       on = true; paused = false; pre = []; resetUtt(); lastT = performance.now();
       requestAnimationFrame(tick);
       await Promise.race([warm, new Promise(function (r) { setTimeout(r, 1500); })]);
-      var hp = on && !quiet ? playClip(fxLoad()[HELLO]) : null;
+      var hp = on && !quiet ? playClip(pickHello()) : null;
       if (hp) { set("speak", ""); await hp; }
       if (on && !paused && state !== "listen") listen();
     } catch (e) {
@@ -507,9 +507,6 @@
       setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
       if (state === "listen") {
         if (mic > (fxPlaying ? T_BARGE : T_ON)) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
-        else if (!talking && !held && !nudged && !fxPlaying && now - listenSince > 14000) {   // long silence: say we are still here
-          nudged = true; var nd = pickFrom("nudge", true); if (nd) playClip(nd.audio);
-        }
         else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? 1000 : END_MS)) submit();
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
@@ -538,8 +535,7 @@
     var my = ++turn, audio = wavB64(utt);
     ctl = (window.AbortController ? new AbortController() : null);
     set("think", ""); cont = 0; early = false;
-    if (spoke > 1500) { var ea = pickFrom("early"); if (ea) { early = true; playClip(ea.audio); } }   // react at once, transcribing takes a moment
-    armFiller(early ? 5000 : 4500);
+    armFiller(6500);
     transcribe(my, audio, ctl);
   }
   /* step 1: turn your voice into words, and decide if you are really finished */
@@ -574,14 +570,14 @@
     if (CAMRE.test(text)) { addLog("you", text); var ca = pickFrom("task", true); if (ca) playClip(ca.audio); openCam("", true); return; }
     var ack = early ? null : pickFrom(classify(text));
     if (ack) playClip(ack.audio);
-    armFiller(4500); cont = 0;
+    armFiller(6500); cont = 0;
     ask(my, text, ack ? ack.text : "", ctl, shownText);
   }
   async function handleWork(my, text) {
     var V = window.tsaVoice;
     addLog("you", text);
     var a = pickFrom("work", true); if (a) playClip(a.audio);
-    armFiller(4500); cont = 0;
+    armFiller(6500); cont = 0;
     var r;
     try { r = await V.work(text); } catch (e) { r = { ok: false, why: String((e && e.message) || e) }; }
     fillerArmed = false;
@@ -852,7 +848,7 @@
   async function lookDoc(my, question) {              // you gave me a picture and now you are asking about it
     addLog("you", question);
     var a = pickFrom("task", true); if (a) playClip(a.audio);
-    armFiller(4500); cont = 0;
+    armFiller(6500); cont = 0;
     try {
       var d = await post("/api/look", { image: doc.img, question: question, langName: langName() }, ctl && ctl.signal);
       if (my !== turn) return;
