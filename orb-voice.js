@@ -146,6 +146,11 @@
       '<label>Voice</label><select id="vxVoice" aria-label="Voice"></select>' +
       '<label>Voice volume: <span id="vxVolV"></span></label><input type="range" id="vxVol" min="50" max="300" step="10" aria-label="Voice volume">' +
       '<div class="vxseg"><button id="vxTest">Test voice</button><button id="vxDel">Remove</button></div>' +
+      '<label>My voice</label>' +
+      '<div class="vxseg"><button id="vxVpReg">Register my voice</button><button id="vxVpDel">Remove</button></div>' +
+      '<div class="vxseg" id="vxVpMode"><button data-m="1">Only my voice</button><button data-m="0">Any voice</button></div>' +
+      '<div class="vxseg" id="vxVpStr"><button data-s="loose">Relaxed</button><button data-s="normal">Normal</button><button data-s="strict">Strict</button></div>' +
+      '<p class="vxhelp" id="vxVpHelp"></p>' +
       '<label>How long I wait when you pause</label>' +
       '<div class="vxseg" id="vxPat"><button data-p="quick">Quick</button><button data-p="normal">Normal</button><button data-p="patient">Patient</button></div>' +
       '<p class="vxhelp">Patient waits longer, so I do not cut in while you are thinking.</p>' +
@@ -192,7 +197,34 @@
   var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
   var T_ON = 0.12, T_BARGE = 0.16;      // quietest levels that count as "you are talking" / "you are interrupting"
   var noiseFloor = 0, calUntil = 0, loudMs = 0, peakL = 0;   // loudMs / peakL: how much real voice-like sound this turn contained     // background noise level the mic hears in this room; the real thresholds sit above it
-  function onT() { return Math.min(0.6, Math.max(T_ON, noiseFloor * 1.6 + 0.04)); }
+  function focusOn() { return get("tsa_voice_focus") !== "0"; }   // Settings: "Focus on my voice" (on by default)
+  function lockOn() { return get("tsa_voice_lock") === "1"; }     // Settings: "Lock to the first voice" (off by default, experimental)
+  function onT() { return Math.min(0.6, Math.max(T_ON, focusOn() ? noiseFloor * 2 + 0.06 : noiseFloor * 1.6 + 0.04)); }
+  var voiceLvl = 0, pitches = [], lockP = 0, pFrame = 0, pbuf = null, enrolling = false, enrollT = 0;
+  function VPon() { return !!(window.VoicePrint && window.VoicePrint.on()); }
+  /* rough pitch of the voice (Hz) from the mic: used only to tell the first speaker from other people */
+  function pitchNow() {
+    if (!micAn || !ctx) return 0;
+    if (!pbuf) pbuf = new Float32Array(micAn.fftSize);
+    micAn.getFloatTimeDomainData(pbuf);
+    var sr = ctx.sampleRate, lo = Math.floor(sr / 420), hi = Math.min(Math.floor(sr / 75), pbuf.length - 200), n = pbuf.length - hi, r0 = 0, i, l;
+    if (hi <= lo || n < 150) return 0;
+    for (i = 0; i < n; i++) r0 += pbuf[i] * pbuf[i];
+    if (r0 < 1e-6) return 0;
+    var best = 0, cs = [];
+    for (l = lo; l <= hi; l++) { var c = 0, e = 0; for (i = 0; i < n; i++) { c += pbuf[i] * pbuf[i + l]; e += pbuf[i + l] * pbuf[i + l]; } c = c / Math.sqrt(r0 * e + 1e-9); cs[l] = c; if (c > best) best = c; }
+    if (best < 0.5) return 0;
+    for (l = lo; l <= hi; l++) if (cs[l] >= best * 0.92 && cs[l] >= cs[l - 1] && cs[l] >= (cs[l + 1] || 0)) return sr / l;   // shortest strong repeat = the pitch, not a lower echo of it
+    return 0;
+  }
+  function medianPitch() { if (pitches.length < 8) return 0; var a = pitches.slice().sort(function (x, y) { return x - y; }); return a[a.length >> 1]; }
+  function sameVoice() {                      // true when this turn sounds like the first voice that spoke (or when we cannot tell)
+    var vp = medianPitch(); if (!vp) return true;
+    if (!lockP) { lockP = vp; return true; }
+    var ratio = vp / lockP;
+    if (ratio > 0.8 && ratio < 1.25) { lockP = lockP * 0.85 + vp * 0.15; return true; }
+    return false;
+  }
   function bargeT() { return onT() + (T_BARGE - T_ON); }
   var END_MS = 700;                     // (kept for reference) the real wait now comes from PATS below
   var PATS = { quick: [500, 800], normal: [700, 1000], patient: [1100, 1500] };   // [silence that ends a turn, same after very short speech] in ms
@@ -452,7 +484,7 @@
   }
 
   /* --- turn taking --- */
-  function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; loudMs = 0; peakL = 0; }
+  function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; loudMs = 0; peakL = 0; voiceLvl = 0; pitches = []; if (window.VoicePrint) window.VoicePrint.reset(); }
   function listen() { resetUtt(); bargeMs = 0; fillerArmed = false; clearTimeout(bcT); listenSince = performance.now(); nudged = false; set("listen", ""); }
   function startTalk() { talking = true; utt = pre.slice(); pre = []; clearTimeout(holdT); clearTimeout(bcT); if (fxPlaying) cancelClips(); }
   function cancelPending() { turn++; if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } fillerArmed = false; cancelClips(); }
@@ -517,7 +549,7 @@
       proc = ctx.createScriptProcessor(4096, 1, 1); srcNode.connect(proc);
       muteNode = ctx.createGain(); muteNode.gain.value = 0; proc.connect(muteNode); muteNode.connect(ctx.destination);
       proc.onaudioprocess = onAudio;
-      on = true; paused = false; pre = []; resetUtt(); lastT = performance.now(); noiseFloor = 0; calUntil = 0;
+      on = true; paused = false; pre = []; resetUtt(); lastT = performance.now(); noiseFloor = 0; calUntil = 0; lockP = 0;
       requestAnimationFrame(tick);
       await Promise.race([warm, new Promise(function (r) { setTimeout(r, 1500); })]);
       var hp = on && !quiet ? playClip(pickHello()) : null;
@@ -530,6 +562,7 @@
     }
   }
   function end() {
+    enrolling = false; if (window.VoicePrint) window.VoicePrint.enrollCancel();
     on = false; paused = false; padMs = 0; cancelPending(); resetUtt(); dropHeld(); job = null; carry = ""; pendingUser = "";
     try { if (proc) { proc.onaudioprocess = null; proc.disconnect(); } if (srcNode) srcNode.disconnect(); } catch (e) {}
     if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
@@ -556,8 +589,22 @@
       }
       setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
       if (calibrating) { /* measuring the room: just a moment */ }
+      else if (enrolling) {                 // registering your voice: just listen to you, answer nothing
+        if (mic > onT()) {
+          var pr = window.VoicePrint.enrollFeed(micAn, ctx.sampleRate);
+          if (now - enrollT > 400) { enrollT = now; q("vxSt").textContent = "Registering your voice. Keep talking normally: " + Math.round(pr * 100) + "%"; }
+          if (pr >= 1) finishEnroll();
+        }
+      }
       else if (state === "listen") {
-        if (mic > (fxPlaying ? bargeT() : onT())) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; loudMs += dt; if (mic > peakL) peakL = mic; }
+        /* once you are talking, only sound close to YOUR level counts as you: quieter voices further away stop extending your turn */
+        var thr = fxPlaying ? bargeT() : (talking && focusOn() && voiceLvl > 0 ? Math.max(onT(), voiceLvl * 0.5) : onT());
+        if (mic > thr) {
+          if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; loudMs += dt; if (mic > peakL) peakL = mic;
+          voiceLvl = voiceLvl ? voiceLvl * 0.92 + mic * 0.08 : mic;
+          if (VPon()) window.VoicePrint.feed(micAn, ctx.sampleRate);
+          if (lockOn() && (++pFrame % 3 === 0) && pitches.length < 300) { var pv = pitchNow(); if (pv) pitches.push(pv); }
+        }
         else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? PATS[pat][1] : PATS[pat][0]) + padMs) submit();
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
@@ -583,6 +630,8 @@
   function submit() {
     var spoke = lastVoice - speechStart;
     if (spoke < 350 || loudMs < 300 || peakL < onT() * 1.3) { resetUtt(); pre = []; if (held) armHold(); return; }          // just a noise: too short, or never clearly louder than the room
+    if (VPon() && !window.VoicePrint.verdict().ok) { resetUtt(); pre = []; if (held) armHold(); return; }   // not the registered voice: ignore it
+    if (lockOn() && !sameVoice()) { resetUtt(); pre = []; if (held) armHold(); return; }   // a different voice than the first one that spoke: ignore it
     var my = ++turn, audio = wavB64(utt);
     ctl = (window.AbortController ? new AbortController() : null);
     set("think", ""); cont = 0; early = false;
@@ -1048,6 +1097,34 @@
     voices = voices.filter(function (v) { return v.id !== voice; }); save("tsa_voice_voices", voices); setVoice(""); drawVoices();
   };
   q("vxVol").value = vol; q("vxVolV").textContent = vol + "%";
+  function finishEnroll() {
+    enrolling = false;
+    var ok = window.VoicePrint.enrollFinish();
+    q("vxSt").textContent = ok ? "Your voice is registered. I will only answer you now." : "That was too short or too quiet. Open settings and try again.";
+    drawVp(); q("vxSheet").hidden = false; q("vxMsg").textContent = q("vxSt").textContent;
+    if (ok) setTimeout(function () { if (on && !paused) listen(); }, 300);
+  }
+  async function startEnroll() {
+    var VP = window.VoicePrint; if (!VP) return;
+    q("vxSheet").hidden = true; VP.enrollStart(); enrolling = true; enrollT = 0;
+    if (!on) await begin(true);
+    if (!on) { enrolling = false; VP.enrollCancel(); return; }
+    set("listen", "Registering your voice. Talk normally for about 30 seconds: read something aloud or just chat. Do this in a quiet room.");
+  }
+  function drawVp() {
+    var VP = window.VoicePrint, h = q("vxVpHelp"); if (!h) return;
+    var bs = q("vxVpMode").children, ss = q("vxVpStr").children, i;
+    if (!VP) { h.textContent = "Voice registration is not available."; return; }
+    for (i = 0; i < bs.length; i++) bs[i].classList.toggle("act", VP.enrolled() && (bs[i].getAttribute("data-m") === "1") === VP.on());
+    for (i = 0; i < ss.length; i++) ss[i].classList.toggle("act", ss[i].getAttribute("data-s") === VP.strict());
+    h.textContent = VP.enrolled() ? (VP.on() ? "I only answer the voice you registered. If I ignore you too often, choose Relaxed or register again in a quiet room." : "Your voice is saved, but I answer any voice.") : "Not registered yet. Register once (about 30 seconds) and I will ignore other people's voices. Only numbers about your voice are saved, on this phone, never a recording.";
+  }
+  q("vxVpReg").onclick = startEnroll;
+  q("vxVpDel").onclick = function () { if (window.VoicePrint) window.VoicePrint.clear(); drawVp(); q("vxMsg").textContent = "Your voice was removed."; };
+  q("vxVpMode").onclick = function (e) { var m = e.target && e.target.getAttribute && e.target.getAttribute("data-m"); if (m === null || m === undefined || !window.VoicePrint || !window.VoicePrint.enrolled()) return; window.VoicePrint.setOn(m === "1"); drawVp(); };
+  q("vxVpStr").onclick = function (e) { var m = e.target && e.target.getAttribute && e.target.getAttribute("data-s"); if (!m || !window.VoicePrint) return; window.VoicePrint.setStrict(m); drawVp(); };
+  q("vxGear").addEventListener("click", drawVp);
+  drawVp();
   function drawPat() { var bs = q("vxPat").children; for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("act", bs[i].getAttribute("data-p") === pat); }
   q("vxPat").onclick = function (e) { var p = e.target && e.target.getAttribute && e.target.getAttribute("data-p"); if (!p || !PATS[p]) return; pat = p; put("tsa_voice_pat", p); drawPat(); q("vxMsg").textContent = "Saved. I will wait " + (p === "quick" ? "a little less" : p === "patient" ? "longer" : "the normal time") + " when you pause."; };
   drawPat();
