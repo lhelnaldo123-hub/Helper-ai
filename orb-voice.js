@@ -17,6 +17,7 @@
 
   var history = load("tsa_voice_history"), memory = load("tsa_voice_memory"), voices = load("tsa_voice_voices");
   var voice = get("tsa_voice_id"), lang = get("tsa_voice_lang");
+  var token = get("tsa_voice_token"), tasks = load("tsa_voice_tasks"), pendingCam = null;
 
   /* ---------- styles ---------- */
   var css = [
@@ -74,7 +75,16 @@
     "#vxMsg{font-size:.85rem;color:var(--muted);min-height:1.2em}",
     ".vxhelp{font-size:.8rem;color:var(--muted);line-height:1.4;margin:0}",
     "#vxOpen{display:inline-grid;place-items:center}",
-    ".vxname{font-weight:600;font-size:1.05rem}"
+    ".vxname{font-weight:600;font-size:1.05rem}",
+    "#vxCam{position:fixed;inset:0;z-index:10001;background:#05060b;display:flex;flex-direction:column;color:#e8eaf2}",
+    "#vxCam[hidden]{display:none}",
+    "#vxCamV{flex:1;min-height:0;width:100%;object-fit:cover;background:#000}",
+    ".vxcb{padding:.8rem 1rem calc(.8rem + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:.5rem;background:#0b0e1d}",
+    "#vxCamTxt{font-size:.9rem;color:#98a0c0;min-height:1.2em}",
+    "#vxCamOut{font-size:.95rem;line-height:1.4;max-height:26dvh;overflow:auto;white-space:pre-wrap}",
+    "#vxCam input{width:100%;border:1px solid #2a315a;background:#11152b;color:inherit;border-radius:12px;padding:.7rem .8rem;font:inherit}",
+    "#vxCam button{flex:1;padding:.8rem;border-radius:999px;border:1px solid #2a315a;background:#11152b;color:inherit;font:inherit}",
+    "#vxCam .vxpri{background:#2f6bff;border:0;color:#fff}"
   ].join("");
   var st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -93,7 +103,7 @@
     '<div class="vxmid"><div class="vxw"><span class="vxring"></span><span class="vxring vxr2"></span>' +
       '<button class="vxorb" id="vxOrb" aria-label="Tap to talk"><i></i><i></i><i></i></button></div></div>' +
     '<p id="vxSt"></p>' +
-    '<div class="vxbtns"><button id="vxPause">Pause</button><button id="vxEnd">End</button></div>' +
+    '<div class="vxbtns"><button id="vxCamBtn">Camera</button><button id="vxPause">Pause</button><button id="vxEnd">End</button></div>' +
     '<div id="vxSheet" hidden><div class="vxcard">' +
       '<h3>Voice settings</h3>' +
       '<label>Language</label><select id="vxLang" aria-label="Language"></select>' +
@@ -105,6 +115,8 @@
       '<input id="vxId" placeholder="Paste Fish voice link or ID" autocomplete="off">' +
       '<button id="vxAdd">Add voice</button>' +
       '<p class="vxhelp">On fish.audio, open a voice you like and copy its link from the browser.</p>' +
+      '<label>What I remember</label><div id="vxMem" class="vxhelp"></div>' +
+      '<div class="vxseg"><button id="vxMemClr">Forget our talks</button><button id="vxTaskClr">Clear plans</button></div>' +
       '<div id="vxMsg"></div>' +
       '<button class="vxpri" id="vxDone">Done</button>' +
     '</div></div>' +
@@ -114,6 +126,14 @@
       '<div class="vxseg"><button id="vxLogChat">Open chat</button><button id="vxLogClear">Clear</button></div>' +
       '<button class="vxpri" id="vxLogDone">Done</button>' +
     '</div></div>' +
+    '<div id="vxCam" hidden>' +
+      '<video id="vxCamV" playsinline muted autoplay></video>' +
+      '<div class="vxcb">' +
+        '<div id="vxCamTxt"></div><div id="vxCamOut"></div>' +
+        '<input id="vxCamQ" placeholder="Ask about it (optional), e.g. solve this" autocomplete="off">' +
+        '<div class="vxseg"><button class="vxpri" id="vxCamLook">Look</button><button id="vxCamFlip">Flip</button><button id="vxCamClose">Close</button></div>' +
+      '</div>' +
+    '</div>' +
     '<audio id="vxAudio" playsinline></audio>';
   document.body.appendChild(ov);
 
@@ -130,6 +150,143 @@
 
   /* ---------- voice engine ---------- */
   var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
+  var T_ON = 0.12, T_BARGE = 0.30;      // how loud counts as "you are talking" / "you are interrupting"
+  var END_MS = 700;                     // silence that ends your turn (waits a bit longer after very short speech)
+  var PRE_BLOCKS = 6;                   // keeps the last half second so first words are never lost
+
+  var state = "idle", on = false, paused = false, turn = 0;
+  var ctx, micAn, outAn, stream, srcNode, proc, muteNode, ctl = null, stopFn = null, fxP = null, fxPlaying = false;
+  var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, fillerArmed = false;
+  var buf = new Float32Array(1024);
+  var auto = 1, gainNode = null, vol = parseInt(get("tsa_voice_vol"), 10) || 100;
+  var held = "", holds = 0, holdT = null, bcT = null, lastAck = "";
+  var clipN = 0, clipGen = 0, lastClipEnd = 0, fillN = 0, nextFill = 0, listenSince = 0, nudged = false, early = false;   // words kept when you pause mid-thought
+  var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
+
+  /* --- the Text screen: everything said, with Copy buttons (and full code, memos, lesson plans made by voice) --- */
+  var log = load("tsa_voice_log");
+  function saveLog() {
+    var keep = log.slice(-30).map(function (e) { return { who: e.who, title: e.title || "", text: String(e.text || "").slice(0, 20000), code: !!e.code }; });
+    save("tsa_voice_log", keep);
+  }
+  function addLog(who, text, title, code) {
+    text = String(text || "").trim(); if (!text) return;
+    log.push({ who: who, text: text, title: title || "", code: !!code });
+    if (log.length > 30) log = log.slice(-30);
+    saveLog();
+    if (!q("vxLog").hidden) renderLog();
+  }
+  function copyTxt(t, btn) {
+    function done() { if (btn) { var o = btn.getAttribute("data-l") || btn.textContent; btn.setAttribute("data-l", o); btn.textContent = "Copied"; setTimeout(function () { btn.textContent = o; }, 1200); } }
+    function fallback() {
+      var ta = document.createElement("textarea"); ta.value = t; ta.style.cssText = "position:fixed;opacity:0;top:0;left:0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta); done();
+    }
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(done, fallback); return; } } catch (e) {}
+    fallback();
+  }
+  function codeOf(t) {
+    var re = /```[a-zA-Z0-9]*\n([\s\S]*?)```/g, m, out = [];
+    while ((m = re.exec(t))) out.push(m[1].replace(/\n$/, ""));
+    return out.join("\n\n");
+  }
+  function renderLog() {
+    var list = q("vxLogList"); list.innerHTML = "";
+    if (!log.length) { list.textContent = "Nothing yet. What you and the AI say will show here, and you can copy it."; return; }
+    log.forEach(function (e) {
+      var d = document.createElement("div"); d.className = "vxi" + (e.code ? " code" : "");
+      var sm = document.createElement("small"); sm.textContent = (e.who === "you" ? "You" : "Tender Sprout AI") + (e.title ? " · " + e.title : "");
+      var pr = document.createElement("pre"); pr.textContent = e.text;
+      d.appendChild(sm); d.appendChild(pr);
+      if (e.who !== "you") {
+        var row = document.createElement("div"); row.className = "vxcp";
+        var cb = document.createElement("button"); cb.textContent = "Copy"; cb.onclick = function () { copyTxt(e.text, cb); };
+        row.appendChild(cb);
+        var cd = e.code ? "" : codeOf(e.text);
+        if (cd) { var cc = document.createElement("button"); cc.textContent = "Copy code"; cc.onclick = function () { copyTxt(cd, cc); }; row.appendChild(cc); }
+        d.appendChild(row);
+      }
+      list.appendChild(d);
+    });
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function set(s, text) {
+    state = s; ov.dataset.s = s;
+    if (text !== undefined) { var e = q("vxSt"); e.textContent = text; e.classList.toggle("on", /^(Error|Microphone|No internet|No microphone)/.test(text)); }
+  }
+  function level(an) {
+    an.getFloatTimeDomainData(buf);
+    var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    return Math.min(1, Math.sqrt(sum / buf.length) * 10);
+  }
+  function setLevel(v) { ov.style.setProperty("--l", v); }
+
+  /* --- recording straight from the mic (no MediaRecorder, so we can keep a pre-roll and resend) --- */
+  function onAudio(e) {
+    if (!on || paused) return;
+    var inp = e.inputBuffer.getChannelData(0), ratio = ctx.sampleRate / SR, n = Math.floor(inp.length / ratio), out = new Int16Array(n);
+    for (var i = 0; i < n; i++) {
+      var a = Math.floor(i * ratio), b = Math.min(inp.length, Math.floor((i + 1) * ratio)), s = 0, c = 0;
+      for (var j = a; j < b; j++) { s += inp[j]; c++; }
+      var v = c ? s / c : 0; out[i] = Math.max(-1, Math.min(1, v)) * 32767;
+    }
+    if (talking) { utt.push(out); if (utt.length > 700 && state === "listen") submit(); }
+    else { pre.push(out); if (pre.length > PRE_BLOCKS) pre.shift(); }
+  }
+  function wavB64(blocks) {
+    var len = 0; blocks.forEach(function (b) { len += b.length; });
+    var buffer = new ArrayBuffer(44 + len * 2), dv = new DataView(buffer);
+    function str(o, t) { for (var i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); }
+    str(0, "RIFF"); dv.setUint32(4, 36 + len * 2, true); str(8, "WAVE"); str(12, "fmt "); dv.setUint32(16, 16, true);
+    dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
+    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, "data"); dv.setUint32(40, len * 2, true);
+    var o = 44; blocks.forEach(function (b) { for (var i = 0; i < b.length; i++) { dv.setInt16(o, b[i], true); o += 2; } });
+    var bytes = new Uint8Array(buffer), s = "";
+    for (var k = 0; k < bytes.length; k += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(k, k + 0x8000));
+    return btoa(s);
+  }
+
+  /* --- playing sound --- */
+  function playB64(b64) {
+    return new Promise(function (res) {
+      var done = false;
+      function fin() { if (done) return; done = true; player.onended = null; player.onerror = null; if (stopFn === fin) stopFn = null; res(); }
+      stopFn = fin; player.onended = fin; player.onerror = fin;
+      levelOf(b64).then(function (m) {
+        if (done) return;
+        auto = m; applyVol();
+        player.src = "data:audio/mpeg;base64," + b64;
+        player.play().catch(fin);
+      });
+    });
+  }
+  function stopPlayback() { try { player.pause(); } catch (e) {} if (stopFn) { var f = stopFn; stopFn = null; f(); } }
+
+  /* --- short spoken reactions ("Mm-hm", "Oh nice!", "Good question."), made once per voice and kept on the phone --- */
+  var HELLO = "Okay, I'm listening.";
+  var ACKS = {
+    early: ["Mm-hm.", "Okay.", "Right.", "I see.", "Okay, okay."],
+    listen: ["Mm-hm, I'm listening.", "Okay... I'm listening.", "Go on, I'm listening.", "Take your time, I'm listening."],
+    wait: ["Let me think.", "Hmm, let's see.", "Just a second.", "Let's see..."],
+    ok:   ["Mm-hm.", "Aha.", "Okay.", "Right.", "I see.", "Okay, got it."],
+    ask:  ["Good question.", "Hmm, let me think.", "Okay, one moment.", "Sure."],
+    task: ["Sure thing.", "Alright.", "Okay, on it."],
+    wait2: ["Almost there.", "Just a little more.", "Okay, nearly done.", "Thanks for waiting."],
+    nudge: ["I'm still here. Take your time.", "Okay, I'm listening whenever you're ready."],
+    work: ["Sure, I'll put that in your chat.", "Okay, I'll make that in your chat.", "On it. Give me a moment."],
+    ready: ["It's ready. Tap the text button to copy it.", "Done. You can copy it from the text button."],
+    good: ["Oh nice!", "That's great!", "Oh wow, nice."],
+    sad:  ["Aww.", "Oh no.", "Hmm, I'm sorry to hear that."]
+  };
+  function allLines() { var a = [HELLO]; Object.keys(ACKS).forEach(function (c) { a = a.concat(ACKS[c]); }); return a; }
+  function fxKey() { return "tsa_voice_fx2_" + (voice || "default"); }
+  var fxMem = null, fxBusy = {};
+  function fxLoad() {
+    var k = fxKey(); if (fxMem && fxMem.k === k) return fxMem.v;
+    var v = {}; try { v = JSON.parse(localStorage.getItem(k)) || {// speech is recorded as 16 kHz mono WAV
   var T_ON = 0.12, T_BARGE = 0.30;      // how loud counts as "you are talking" / "you are interrupting"
   var END_MS = 700;                     // silence that ends your turn (waits a bit longer after very short speech)
   var PRE_BLOCKS = 6;                   // keeps the last half second so first words are never lost
