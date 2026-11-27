@@ -292,7 +292,7 @@
     listen: ["Mm-hm, I'm listening.", "Okay... I'm listening.", "Go on, I'm listening.", "Take your time, I'm listening."],
     wait: ["Let me think.", "Hmm, let's see.", "Just a second.", "Let's see..."],
     ok:   ["Mm-hm.", "Aha.", "Okay.", "Right.", "I see.", "Okay, got it."],
-    ask:  ["Good question.", "Hmm, let me think.", "Okay, one moment.", "Sure."],
+    ask:  ["Good question.", "Sure.", "Okay."],
     task: ["Sure thing.", "Alright.", "Okay, on it."],
     wait2: ["Almost there.", "Just a little more.", "Okay, nearly done.", "Thanks for waiting."],
     nudge: ["I'm still here. Take your time.", "Okay, I'm listening whenever you're ready."],
@@ -539,7 +539,7 @@
     ctl = (window.AbortController ? new AbortController() : null);
     set("think", ""); cont = 0; early = false;
     if (spoke > 1500) { var ea = pickFrom("early"); if (ea) { early = true; playClip(ea.audio); } }   // react at once, transcribing takes a moment
-    armFiller(early ? 2800 : 2200);
+    armFiller(early ? 5000 : 4500);
     transcribe(my, audio, ctl);
   }
   /* step 1: turn your voice into words, and decide if you are really finished */
@@ -574,14 +574,14 @@
     if (CAMRE.test(text)) { addLog("you", text); var ca = pickFrom("task", true); if (ca) playClip(ca.audio); openCam("", true); return; }
     var ack = early ? null : pickFrom(classify(text));
     if (ack) playClip(ack.audio);
-    armFiller(ack || early ? 2600 : 1500); cont = 0;
+    armFiller(4500); cont = 0;
     ask(my, text, ack ? ack.text : "", ctl, shownText);
   }
   async function handleWork(my, text) {
     var V = window.tsaVoice;
     addLog("you", text);
     var a = pickFrom("work", true); if (a) playClip(a.audio);
-    armFiller(2600); cont = 0;
+    armFiller(4500); cont = 0;
     var r;
     try { r = await V.work(text); } catch (e) { r = { ok: false, why: String((e && e.message) || e) }; }
     fillerArmed = false;
@@ -852,7 +852,7 @@
   async function lookDoc(my, question) {              // you gave me a picture and now you are asking about it
     addLog("you", question);
     var a = pickFrom("task", true); if (a) playClip(a.audio);
-    armFiller(2600); cont = 0;
+    armFiller(4500); cont = 0;
     try {
       var d = await post("/api/look", { image: doc.img, question: question, langName: langName() }, ctl && ctl.signal);
       if (my !== turn) return;
