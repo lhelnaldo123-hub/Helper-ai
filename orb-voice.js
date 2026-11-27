@@ -52,9 +52,18 @@
     "@media (prefers-reduced-motion:reduce){.vxorb i,.vxring{animation:none!important}}",
     "#vxSt{display:none;text-align:center;padding:0 1.2rem .6rem;font-size:.95rem;color:#ff8a8a}",
     "#vxSt.on{display:block}",
-    ".vxbtns{display:flex;gap:.6rem;padding:0 1rem 1rem}",
-    ".vxbtns button{flex:1;padding:.85rem;border-radius:999px;border:1px solid var(--line);background:var(--btn)}",
-    "#vxEnd{color:#ff5a5a}",
+    ".vxdock{display:flex;justify-content:center;gap:.8rem;padding:0 .8rem 1.1rem}",
+    ".vxgb{display:flex;flex-direction:column;align-items:center;gap:.4rem;background:none;border:0;padding:0;min-width:58px}",
+    ".vxgb .ic{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,rgba(255,255,255,.24),rgba(255,255,255,.06));-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);border:1px solid rgba(255,255,255,.3);box-shadow:0 10px 26px -12px var(--c1),inset 0 1px 0 rgba(255,255,255,.4);transition:transform .15s,box-shadow .6s}",
+    ".vxgb:active .ic{transform:scale(.9)}",
+    ".vxgb svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}",
+    ".vxgb small{font-size:.7rem;color:var(--muted)}",
+    "#vxEnd .ic{color:#ff6b6b;background:linear-gradient(145deg,rgba(255,90,90,.3),rgba(255,90,90,.08));border-color:rgba(255,120,120,.45)}",
+    "html[data-theme=light] .vxgb .ic{background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(255,255,255,.5));border-color:rgba(60,70,130,.22);box-shadow:0 10px 24px -14px #3b4a7a,inset 0 1px 0 #fff}",
+    "#vxFile{display:flex;align-items:center;gap:.4rem;margin:0 auto .8rem;max-width:88%;padding:.4rem .4rem .4rem .9rem;border-radius:999px;font-size:.82rem;background:rgba(255,255,255,.1);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.25)}",
+    "#vxFile[hidden]{display:none}",
+    "#vxFileN{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+    "#vxFileX{width:28px;height:28px;border-radius:50%;border:0;background:rgba(255,255,255,.18);font-size:1rem;line-height:1}",
     "#vxSheet,#vxLog{position:fixed;inset:0;background:#0008;display:flex;align-items:flex-end;justify-content:center;z-index:10000}",
     "#vxSheet[hidden],#vxLog[hidden]{display:none}",
     ".vxrt{display:flex;gap:.5rem}",
@@ -89,6 +98,7 @@
   var st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
   /* ---------- page pieces ---------- */
+  function gb(id, label, svg) { return '<button class="vxgb" id="' + id + '"><span class="ic"><svg viewBox="0 0 24 24">' + svg + '</svg></span><small id="' + id + 'L">' + label + '</small></button>'; }
   var ov = document.createElement("div");
   ov.id = "vxOv"; ov.hidden = true; ov.dataset.s = "idle";
   ov.innerHTML =
@@ -103,7 +113,15 @@
     '<div class="vxmid"><div class="vxw"><span class="vxring"></span><span class="vxring vxr2"></span>' +
       '<button class="vxorb" id="vxOrb" aria-label="Tap to talk"><i></i><i></i><i></i></button></div></div>' +
     '<p id="vxSt"></p>' +
-    '<div class="vxbtns"><button id="vxCamBtn">Camera</button><button id="vxPause">Pause</button><button id="vxEnd">End</button></div>' +
+    '<div id="vxFile" hidden><span id="vxFileN"></span><button id="vxFileX" aria-label="Remove file">\u00d7</button></div>' +
+    '<input type="file" id="vxFileIn" multiple hidden>' +
+    '<div class="vxdock">' +
+      gb("vxCamBtn", "Camera", '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>') +
+      gb("vxFileBtn", "File", '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>') +
+      gb("vxMsgBtn", "Messages", '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>') +
+      gb("vxPause", "Pause", '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>') +
+      gb("vxEnd", "End", '<path d="M18 6 6 18M6 6l12 12"/>') +
+    '</div>' +
     '<div id="vxSheet" hidden><div class="vxcard">' +
       '<h3>Voice settings</h3>' +
       '<label>Language</label><select id="vxLang" aria-label="Language"></select>' +
@@ -150,7 +168,7 @@
 
   /* ---------- voice engine ---------- */
   var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
-  var T_ON = 0.12, T_BARGE = 0.30;      // how loud counts as "you are talking" / "you are interrupting"
+  var T_ON = 0.12, T_BARGE = 0.16;      // how loud counts as "you are talking" / "you are interrupting"
   var END_MS = 700;                     // silence that ends your turn (waits a bit longer after very short speech)
   var PRE_BLOCKS = 6;                   // keeps the last half second so first words are never lost
 
@@ -160,6 +178,7 @@
   var buf = new Float32Array(1024);
   var auto = 1, gainNode = null, vol = parseInt(get("tsa_voice_vol"), 10) || 100;
   var held = "", holds = 0, holdT = null, bcT = null, lastAck = "";
+  var job = null, carry = "", pendingUser = "", lastOut = 0;   // job = the task being worked on (what you asked, what was said, what is left)
   var clipN = 0, clipGen = 0, lastClipEnd = 0, fillN = 0, nextFill = 0, listenSince = 0, nudged = false, early = false;   // words kept when you pause mid-thought
   var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
 
@@ -213,6 +232,7 @@
     list.scrollTop = list.scrollHeight;
   }
 
+  function pLabel(t) { var e = q("vxPauseL"); if (e) e.textContent = t; }
   function set(s, text) {
     state = s; ov.dataset.s = s;
     if (text !== undefined) { var e = q("vxSt"); e.textContent = text; e.classList.toggle("on", /^(Error|Microphone|No internet|No microphone)/.test(text)); }
@@ -374,6 +394,25 @@
     }, 1300);
   }
 
+  /* --- remembering the job when you interrupt --- */
+  var STOPRE = /^(ok(ay)?[, ]*)?(stop|wait|hold on|hold up|pause|enough|cancel|never ?mind|be quiet|quiet|shut up)\b[ .!,]*$/i;
+  function markInterrupted() {
+    if (!job || job.done) return;
+    job.interrupted = true;
+    var i = Math.max(0, Math.min(job.parts.length, job.idx));
+    job.heard = job.parts.slice(0, i + 1).join(" ");
+    job.unsaid = job.parts.slice(i + 1).join(" ");
+    // fix the memory: the AI should know you did NOT hear all of it
+    for (var k = history.length - 1; k >= 0; k--) {
+      if (history[k].role === "assistant") { history[k] = { role: "assistant", content: job.heard + " [I was interrupted here. The rest was not heard.]" }; break; }
+    }
+    save("tsa_voice_history", history);
+  }
+  function jobContext(newText) {          // sent to the server so it knows what you were doing before you cut in
+    if (!job || job.done) return null;
+    return { task: job.task, heard: (job.heard || "").slice(0, 500), unsaid: (job.unsaid || "").slice(0, 500), interrupted: !!job.interrupted, stopOnly: STOPRE.test(newText.trim()) };
+  }
+
   /* --- turn taking --- */
   function resetUtt() { talking = false; utt = []; speechStart = 0; cont = 0; }
   function listen() { resetUtt(); bargeMs = 0; fillerArmed = false; clearTimeout(bcT); listenSince = performance.now(); nudged = false; set("listen", ""); }
@@ -414,7 +453,7 @@
       outAn.connect(gainNode); gainNode.connect(lim); lim.connect(ctx.destination);
     } catch (x) { outAn = null; gainNode = null; }
   }
-  async function begin() {
+  async function begin(quiet) {
     try {
       if (typeof rec !== "undefined" && rec) { try { rec.stop(); } catch (x) {} }
     } catch (x) {}
@@ -439,7 +478,7 @@
       on = true; paused = false; pre = []; resetUtt(); lastT = performance.now();
       requestAnimationFrame(tick);
       await Promise.race([warm, new Promise(function (r) { setTimeout(r, 1500); })]);
-      var hp = on ? playClip(fxLoad()[HELLO]) : null;
+      var hp = on && !quiet ? playClip(fxLoad()[HELLO]) : null;
       if (hp) { set("speak", ""); await hp; }
       if (on && !paused && state !== "listen") listen();
     } catch (e) {
@@ -449,15 +488,15 @@
     }
   }
   function end() {
-    on = false; paused = false; cancelPending(); resetUtt(); dropHeld();
+    on = false; paused = false; cancelPending(); resetUtt(); dropHeld(); job = null; carry = ""; pendingUser = "";
     try { if (proc) { proc.onaudioprocess = null; proc.disconnect(); } if (srcNode) srcNode.disconnect(); } catch (e) {}
     if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
-    setLevel(0); q("vxPause").textContent = "Pause"; set("idle", "");
+    setLevel(0); pLabel("Pause"); set("idle", "");
   }
   function pause() {
     if (!on) return;
-    if (!paused) { paused = true; cancelPending(); resetUtt(); dropHeld(); setLevel(0); q("vxPause").textContent = "Resume"; set("idle", ""); }
-    else { paused = false; q("vxPause").textContent = "Pause"; pre = []; listen(); }
+    if (!paused) { paused = true; cancelPending(); resetUtt(); dropHeld(); setLevel(0); pLabel("Resume"); set("idle", ""); }
+    else { paused = false; pLabel("Pause"); pre = []; listen(); }
   }
 
   function tick(now) {
@@ -475,16 +514,18 @@
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
         if (!fxPlaying) { if (mic > T_ON) cont += dt; else cont = Math.max(0, cont - dt); }
-        if (cont >= 140) { cancelPending(); cont = 0; lastVoice = now; set("listen", ""); }
+        if (cont >= 140) { if (pendingUser) { carry = pendingUser; } cancelPending(); cont = 0; lastVoice = now; set("listen", ""); }
         else if (fillerArmed && !fxPlaying && now >= nextFill) {     // still working: a short "let's see..." now and then
           fillN++; var fl = pickFrom(fillN === 1 ? "wait" : "wait2", true);
           if (fl) playClip(fl.audio);
           if (fillN >= 4) fillerArmed = false; else nextFill = now + 4500;
         }
       } else if (state === "speak") {
-        if (mic > T_BARGE) bargeMs += dt; else bargeMs = Math.max(0, bargeMs - dt * 2);
-        if (bargeMs >= 260) {                 // you interrupted
-          bargeMs = 0; cancelPending(); startTalk(); speechStart = now - 300; lastVoice = now; cont = 0; set("listen", "");
+        lastOut = outAn ? level(outAn) : 0;
+        var bt = T_BARGE + lastOut * 0.35;   // louder AI voice = a little higher bar, so its own echo never counts as you
+        if (mic > bt) bargeMs += dt; else bargeMs = Math.max(0, bargeMs - dt * 2);
+        if (bargeMs >= 180) {                 // you interrupted
+          bargeMs = 0; markInterrupted(); cancelPending(); startTalk(); speechStart = now - 300; lastVoice = now; cont = 0; set("listen", "");
         }
       }
     }
@@ -523,13 +564,18 @@
   }
   /* step 2: react like a person while the answer is being thought up */
   function respond(my, text) {
+    var shownText = text;
+    if (carry) { text = "(Before you answered I had asked: \"" + carry + "\". I interrupted and now add:) " + text; carry = ""; }
+    pendingUser = shownText;
     dropHeld(); resetUtt(); pre = [];
+    if (localCmd(my, shownText)) return;
+    if (doc && doc.kind === "img" && !CAMRE.test(text)) { lookDoc(my, shownText); return; }
     if (isWork(text) && window.tsaVoice && window.tsaVoice.work) { handleWork(my, text); return; }
     if (CAMRE.test(text)) { addLog("you", text); var ca = pickFrom("task", true); if (ca) playClip(ca.audio); openCam("", true); return; }
     var ack = early ? null : pickFrom(classify(text));
     if (ack) playClip(ack.audio);
     armFiller(ack || early ? 2600 : 1500); cont = 0;
-    ask(my, text, ack ? ack.text : "", ctl);
+    ask(my, text, ack ? ack.text : "", ctl, shownText);
   }
   async function handleWork(my, text) {
     var V = window.tsaVoice;
@@ -557,26 +603,30 @@
       setTimeout(function () { if (on && !paused && state === "idle") listen(); }, 3500);
     }
   }
-  async function ask(my, text, ack, c) {
+  async function ask(my, text, ack, c, shown) {
     try {
       var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
       var V = window.tsaVoice;                                   // the main app (chat + memory), when it is there
       var mem = (V && V.notes) ? V.notes() : memory;
-      var d = await post("/api/voice", { text: text, ack: ack, history: history.slice(-12), memory: mem, lang: lang, langName: name, mode: MODE, spoken: true, now: new Date().toLocaleString(), tasks: tasks, device: {}, extra: { offset: new Date().getTimezoneOffset() } }, c && c.signal);
+      var d = await post("/api/voice", { text: text, ack: ack, history: history.slice(-12), memory: mem, lang: lang, langName: name, mode: MODE, spoken: true, doc: docPayload(), job: jobContext(shown || text), now: new Date().toLocaleString(), tasks: tasks, device: {}, extra: { offset: new Date().getTimezoneOffset() } }, c && c.signal);
       if (my !== turn) return;
-      fillerArmed = false;
+      fillerArmed = false; pendingUser = "";
       if (!d.reply) { listen(); return; }
-      history.push({ role: "user", content: text }, { role: "assistant", content: d.reply });
+      history.push({ role: "user", content: text }, { role: "assistant", content: doc ? String(d.reply).slice(0, 1500) : d.reply });
       history = history.slice(-40); save("tsa_voice_history", history);
       (d.actions || []).forEach(applyAct);
-      if (V && V.turn) { try { V.turn(text, d.reply); } catch (e) {} }          // show it in the chat
-      addLog("you", text); addLog("ai", d.reply);
+      if (V && V.turn) { try { V.turn(shown || text, d.reply); } catch (e) {} }          // show it in the chat
+      addLog("you", shown || text); addLog("ai", d.reply, doc ? doc.name : "");
+      if (d.long || (doc && String(d.reply).length > 280)) openLog();          // long answer: show it in the pop-up so you can read and copy it
       if (d.mem) {
         if (V && V.remember) { try { V.remember(d.mem); } catch (e) {} }        // save it in Memory & Learning
         else if (memory.indexOf(d.mem) < 0) { memory.push(d.mem); memory = memory.slice(-30); save("tsa_voice_memory", memory); }
       }
       resetUtt(); pre = [];
-      speakAll(sentences(d.say || d.reply), my);
+      var ps = sentences(d.say || d.reply);
+      var amend = job && !job.done && (job.interrupted || /^(and|also|but|no|actually|instead|change|make it|use|use the)\b/i.test((shown || text).trim()));
+      job = { task: amend ? job.task + " | then user said: " + (shown || text) : (shown || text), parts: ps, idx: 0, done: false, interrupted: false, heard: "", unsaid: "" };
+      speakAll(ps, my);
     } catch (e) {
       if (e.name === "AbortError" || my !== turn) return;
       fillerArmed = false; resetUtt();
@@ -603,9 +653,11 @@
         if (my !== turn || !on || paused) return;
         fetchAt(i + 1); fetchAt(i + 2);
         set("speak", "");
+        if (job) job.idx = i;
         await playB64(v.audio);
         if (my !== turn) return;                 // you interrupted
       }
+      if (job) { job.done = true; }
       if (pendingCam && my === turn && on) { var pc = pendingCam; pendingCam = null; openCam(pc.q, true); return; }
       if (my === turn && on && !paused) { pre = []; listen(); }
     } catch (e) {
@@ -718,6 +770,152 @@
   q("vxCamFlip").onclick = async function () { stopPlayback(); camStop(); camFacing = camFacing === "environment" ? "user" : "environment"; await camStart(); };
   q("vxCamClose").onclick = closeCam;
 
+  /* ---------- files: send a zip, code, text, Word file or picture and talk about it ---------- */
+  var doc = null, picking = false;            // doc = the file you gave me: { name, kind: "text"|"img", text | img }
+  var TEXTRE = /\.(txt|md|markdown|json|js|jsx|mjs|cjs|ts|tsx|css|scss|html?|xml|csv|tsv|py|java|c|cpp|h|hpp|cs|php|rb|go|rs|sql|ya?ml|toml|ini|cfg|sh|bat|svg|vue|kt|swift|dart|log|env|gradle)$/i;
+  var SKIPRE = /(^|\/)(node_modules|\.git|__MACOSX|dist|build|\.next)\//;
+  var DOC_MAX = 16000, ONE_MAX = 3500;
+  function langName() { return (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || ""; }
+  function docPayload() { return doc && doc.kind === "text" ? { name: doc.name, text: doc.text } : null; }
+  function openLog() { renderLog(); q("vxLog").hidden = false; }
+  function chip(t) { q("vxFile").hidden = !t; q("vxFileN").textContent = t || ""; }
+  function clearDoc() { doc = null; chip(""); }
+  function imgData(f) {
+    return new Promise(function (res, rej) {
+      var u = URL.createObjectURL(f), im = new Image();
+      im.onload = function () {
+        var k = Math.min(1, 1280 / Math.max(im.width, im.height)), c = document.createElement("canvas");
+        c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); res(c.toDataURL("image/jpeg", 0.8));
+      };
+      im.onerror = function () { URL.revokeObjectURL(u); rej(new Error("I could not open that picture.")); };
+      im.src = u;
+    });
+  }
+  async function readZip(f) {
+    if (!window.JSZip) throw new Error("The zip reader did not load. Check your internet and reload.");
+    var z = await JSZip.loadAsync(f), names = Object.keys(z.files).filter(function (n) { return !z.files[n].dir && !SKIPRE.test(n); });
+    var out = "ZIP \"" + f.name + "\" has " + names.length + " files:\n" + names.slice(0, 150).join("\n") + (names.length > 150 ? "\n..." : "") + "\n\n", used = out.length, cut = 0, skipped = 0;
+    var tn = names.filter(function (n) { return TEXTRE.test(n); });
+    var items = await Promise.all(tn.slice(0, 80).map(async function (n) { return { n: n, t: await z.files[n].async("string") }; }));
+    items.sort(function (a, b) { return a.t.length - b.t.length; });          // small files first so more of them fit
+    for (var i = 0; i < items.length; i++) {
+      if (used >= DOC_MAX) { skipped = items.length - i; break; }
+      var lim = Math.min(ONE_MAX, DOC_MAX - used), t = items[i].t, piece = t.slice(0, lim);
+      if (t.length > lim) { piece += "\n[...cut here, the file has " + t.length + " characters]"; cut++; }
+      var block = "=== " + items[i].n + " ===\n" + piece + "\n\n"; out += block; used += block.length;
+    }
+    if (cut || skipped) out += "[Note: only the start of " + cut + " long file(s) is shown" + (skipped ? " and " + skipped + " file(s) were left out" : "") + ". Say so if the user needs exact details from them.]";
+    return out;
+  }
+  async function readDocx(f) {
+    var z = await JSZip.loadAsync(f), x = z.file("word/document.xml");
+    if (!x) throw new Error("I could not read that Word file.");
+    var s = await x.async("string");
+    return s.replace(/<\/w:p>/g, "\n").replace(/<w:tab\/>/g, "\t").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/\n{3,}/g, "\n\n").trim().slice(0, DOC_MAX);
+  }
+  async function readOne(f) {
+    var n = f.name || "file";
+    if (/^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(n)) return { kind: "img", img: await imgData(f), name: n };
+    if (f.size > 40 * 1024 * 1024) throw new Error("That file is too big for me (over 40 MB).");
+    if (/\.zip$/i.test(n)) return { kind: "text", text: await readZip(f), name: n, zip: true };
+    if (/\.docx$/i.test(n)) return { kind: "text", text: await readDocx(f), name: n };
+    if (/\.(pdf|xlsx|xls|pptx|ppt|doc|rar|7z|mp3|mp4|wav|apk|exe)$/i.test(n)) throw new Error("I can't read " + n.split(".").pop().toUpperCase() + " files by voice yet. Use the plus button in the chat for PDFs, or send a zip, text, code, Word file or picture.");
+    var t = await f.text();
+    if (/[\u0000-\u0008]/.test(t.slice(0, 500))) throw new Error("I can't read that kind of file.");
+    var more = t.length > DOC_MAX;
+    return { kind: "text", text: "FILE \"" + n + "\":\n" + t.slice(0, DOC_MAX) + (more ? "\n[...cut here, the file has " + t.length + " characters]" : ""), name: n };
+  }
+  async function takeFiles(files) {
+    chip("Reading " + files[0].name + (files.length > 1 ? " +" + (files.length - 1) : "") + "...");
+    try {
+      var got = [];
+      for (var i = 0; i < files.length && i < 6; i++) got.push(await readOne(files[i]));
+      var texts = got.filter(function (g) { return g.kind === "text"; });
+      if (texts.length) {
+        var t = texts.map(function (g) { return g.text; }).join("\n\n").slice(0, DOC_MAX + 2000);
+        doc = { kind: "text", name: texts.length > 1 ? texts.length + " files" : texts[0].name, text: t, zip: !!texts[0].zip };
+      } else doc = { kind: "img", name: got[0].name, img: got[0].img };
+      chip((doc.kind === "img" ? "Picture: " : "File: ") + doc.name);
+      addLog("ai", "I have " + (doc.kind === "img" ? "the picture" : "the file") + " \"" + doc.name + "\". Tell me what to do with it.", "File");
+      if (on) {
+        job = null; cancelPending(); var my = turn;
+        var what = doc.kind === "img" ? "the picture" : doc.zip ? "the zip" : "the file";
+        speakAll(["Got it. I've " + (doc.kind === "img" ? "looked at " : "read ") + what + ". What should I do with it?"], my);
+      }
+    } catch (e) {
+      doc = null; chip("");
+      set("idle", "Error: " + ((e && e.message) || "could not read that file"));
+      setTimeout(function () { if (on && !paused && state === "idle") listen(); }, 3500);
+    }
+  }
+  async function lookDoc(my, question) {              // you gave me a picture and now you are asking about it
+    addLog("you", question);
+    var a = pickFrom("task", true); if (a) playClip(a.audio);
+    armFiller(2600); cont = 0;
+    try {
+      var d = await post("/api/look", { image: doc.img, question: question, langName: langName() }, ctl && ctl.signal);
+      if (my !== turn) return;
+      fillerArmed = false; pendingUser = "";
+      var shown = String(d.reply || "").trim(); if (!shown) { listen(); return; }
+      addLog("ai", shown, doc.name);
+      history.push({ role: "user", content: "[Picture " + doc.name + "] " + question }, { role: "assistant", content: shown.slice(0, 1200) });
+      history = history.slice(-40); save("tsa_voice_history", history);
+      var V = window.tsaVoice; if (V && V.turn) { try { V.turn("[Picture] " + question, shown); } catch (e) {} }
+      if (shown.length > 280) openLog();
+      var ps = sentences(d.say || shown);
+      job = { task: "Picture " + doc.name + ": " + question, parts: ps, idx: 0, done: false, interrupted: false, heard: "", unsaid: "" };
+      speakAll(ps, my);
+    } catch (e) {
+      if (e.name === "AbortError" || my !== turn) return;
+      fillerArmed = false; resetUtt();
+      set("idle", "Error: " + (navigator.onLine ? e.message : "No internet."));
+      setTimeout(function () { if (on && !paused && state === "idle") listen(); }, 3000);
+    }
+  }
+
+  /* ---------- voice commands for the message pop-up (open, close, copy) and the file ---------- */
+  var OPEN_RE = /\b(open|show|bring up|pull up|display|let me see|i want to see|i wanna see)\b[^.?!]{0,40}\b(messages?|pop ?-?up|text (screen|window)|what you('| a)re (writing|typing|doing|saying)|your (writing|answer))\b/i;
+  var CLOSE_RE = /\b(close|hide|dismiss|put (it |that )?away|remove|shut|take (it |that )?away)\b/i;
+  var CLOSE_NOUN = /\b(messages?|pop ?-?up|text (screen|window)|window)\b/i;
+  var COPY_RE = /\bcopy\b[^.?!]{0,30}\b(that|it|this|code|answer|text|message|result)\b/i;
+  var FORGET_RE = /\b(forget|remove|clear|drop|close|done with|delete)\b[^.?!]{0,20}\b(file|zip|attachment|document|picture|photo)\b/i;
+  var PICK_RE = /\b(upload|attach|send you|let me send|i want to send|i will send|pick|choose)\b[^.?!]{0,30}\b(file|zip|document|picture|photo|image)\b/i;
+  function lastAI() { for (var i = log.length - 1; i >= 0; i--) if (log[i].who !== "you") return log[i]; return null; }
+  function localCmd(my, text) {
+    var s = text.trim(), words = s.split(/\s+/).length, popOpen = !q("vxLog").hidden, kind = "";
+    if (doc && FORGET_RE.test(s)) kind = "forget";
+    else if (CLOSE_RE.test(s) && (CLOSE_NOUN.test(s) || (popOpen && words <= 5))) kind = "close";
+    else if (COPY_RE.test(s)) kind = "copy";
+    else if (OPEN_RE.test(s)) kind = "open";
+    else if (PICK_RE.test(s)) kind = "pick";
+    if (!kind) return false;
+    fillerArmed = false; addLog("you", s);
+    if (kind === "pick") { speakAll(["Tap the file button at the bottom, then choose your file."], my); return true; }
+    if (kind === "open") openLog();
+    else if (kind === "close") q("vxLog").hidden = true;
+    else if (kind === "forget") clearDoc();
+    else if (kind === "copy") {
+      var a = lastAI();
+      if (!a) { speakAll(["There is nothing to copy yet."], my); return true; }
+      var t = /\bcode\b/i.test(s) ? (a.code ? a.text : codeOf(a.text)) || a.text : a.text, fail = function () { openLog(); speakAll(["I can't copy by myself on this phone. Tap the Copy button for me."], my); };
+      try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(function () {}, fail); } else fail(); } catch (e) { fail(); return true; }
+    }
+    var c = pickFrom("task", true), p = c ? playClip(c.audio) : null;
+    set("speak", "");
+    Promise.resolve(p).then(function () { if (my === turn && on && !paused) { pre = []; listen(); } });
+    return true;
+  }
+  function ensureMic() {                      // after the phone's file picker, the mic may have been cut: bring it back quietly
+    try { if (ctx && ctx.state === "suspended") ctx.resume(); } catch (e) {}
+    if (on && stream && stream.getTracks().some(function (t) { return t.readyState !== "live"; })) { end(); begin(true); }
+  }
+  q("vxFileBtn").onclick = function () { picking = true; q("vxFileIn").value = ""; q("vxFileIn").click(); };
+  q("vxFileIn").onchange = function () { var fs = Array.prototype.slice.call(this.files || []); picking = false; if (!fs.length) return; ensureMic(); takeFiles(fs); };
+  q("vxFileX").onclick = clearDoc;
+  q("vxMsgBtn").onclick = openLog;
+  window.addEventListener("focus", function () { if (picking) setTimeout(function () { picking = false; ensureMic(); }, 1500); });
+
   /* ---------- what it remembers ---------- */
   function renderMem() {
     var box = q("vxMem"); box.textContent = "";
@@ -732,7 +930,7 @@
   q("vxTaskClr").onclick = function () { tasks = []; save("tsa_voice_tasks", tasks); renderMem(); };
 
   q("vxOrb").onclick = function () {
-    if (!on) begin(); else if (paused) pause(); else if (state === "speak" || state === "think") { cancelPending(); pre = []; listen(); }
+    if (!on) begin(); else if (paused) pause(); else if (state === "speak" || state === "think") { markInterrupted(); cancelPending(); pre = []; listen(); }
   };
   q("vxPause").onclick = pause;
   q("vxTextBtn").onclick = function () { renderLog(); q("vxLog").hidden = false; };
@@ -740,11 +938,11 @@
   q("vxLog").onclick = function (e) { if (e.target.id === "vxLog") e.target.hidden = true; };
   q("vxLogClear").onclick = function () { log = []; saveLog(); renderLog(); };
   q("vxLogChat").onclick = function () { close(); };
-  function close() { camStop(); q("vxCam").hidden = true; end(); ov.hidden = true; q("vxSheet").hidden = true; q("vxLog").hidden = true; }
+  function close() { clearDoc(); camStop(); q("vxCam").hidden = true; end(); ov.hidden = true; q("vxSheet").hidden = true; q("vxLog").hidden = true; }
   q("vxEnd").onclick = close;
   q("vxBack").onclick = close;
   open.onclick = function () { ov.hidden = false; if (!on) begin(); };
-  document.addEventListener("visibilitychange", function () { if (document.hidden && on && !paused) pause(); });
+  document.addEventListener("visibilitychange", function () { if (document.hidden && on && !paused && !picking) pause(); });
 
   /* ---------- settings sheet ---------- */
   var ls = q("vxLang");
