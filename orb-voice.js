@@ -286,143 +286,6 @@
   var fxMem = null, fxBusy = {};
   function fxLoad() {
     var k = fxKey(); if (fxMem && fxMem.k === k) return fxMem.v;
-    var v = {}; try { v = JSON.parse(localStorage.getItem(k)) || {// speech is recorded as 16 kHz mono WAV
-  var T_ON = 0.12, T_BARGE = 0.30;      // how loud counts as "you are talking" / "you are interrupting"
-  var END_MS = 700;                     // silence that ends your turn (waits a bit longer after very short speech)
-  var PRE_BLOCKS = 6;                   // keeps the last half second so first words are never lost
-
-  var state = "idle", on = false, paused = false, turn = 0;
-  var ctx, micAn, outAn, stream, srcNode, proc, muteNode, ctl = null, stopFn = null, fxP = null, fxPlaying = false;
-  var pre = [], utt = [], talking = false, speechStart = 0, lastVoice = 0, cont = 0, bargeMs = 0, lastT = 0, fillerArmed = false;
-  var buf = new Float32Array(1024);
-  var auto = 1, gainNode = null, vol = parseInt(get("tsa_voice_vol"), 10) || 100;
-  var held = "", holds = 0, holdT = null, bcT = null, lastAck = "";
-  var clipN = 0, clipGen = 0, lastClipEnd = 0, fillN = 0, nextFill = 0, listenSince = 0, nudged = false, early = false;   // words kept when you pause mid-thought
-  var SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";   // tiny silent clip that unlocks audio playback on phones
-
-  /* --- the Text screen: everything said, with Copy buttons (and full code, memos, lesson plans made by voice) --- */
-  var log = load("tsa_voice_log");
-  function saveLog() {
-    var keep = log.slice(-30).map(function (e) { return { who: e.who, title: e.title || "", text: String(e.text || "").slice(0, 20000), code: !!e.code }; });
-    save("tsa_voice_log", keep);
-  }
-  function addLog(who, text, title, code) {
-    text = String(text || "").trim(); if (!text) return;
-    log.push({ who: who, text: text, title: title || "", code: !!code });
-    if (log.length > 30) log = log.slice(-30);
-    saveLog();
-    if (!q("vxLog").hidden) renderLog();
-  }
-  function copyTxt(t, btn) {
-    function done() { if (btn) { var o = btn.getAttribute("data-l") || btn.textContent; btn.setAttribute("data-l", o); btn.textContent = "Copied"; setTimeout(function () { btn.textContent = o; }, 1200); } }
-    function fallback() {
-      var ta = document.createElement("textarea"); ta.value = t; ta.style.cssText = "position:fixed;opacity:0;top:0;left:0";
-      document.body.appendChild(ta); ta.focus(); ta.select();
-      try { document.execCommand("copy"); } catch (e) {}
-      document.body.removeChild(ta); done();
-    }
-    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(t).then(done, fallback); return; } } catch (e) {}
-    fallback();
-  }
-  function codeOf(t) {
-    var re = /```[a-zA-Z0-9]*\n([\s\S]*?)```/g, m, out = [];
-    while ((m = re.exec(t))) out.push(m[1].replace(/\n$/, ""));
-    return out.join("\n\n");
-  }
-  function renderLog() {
-    var list = q("vxLogList"); list.innerHTML = "";
-    if (!log.length) { list.textContent = "Nothing yet. What you and the AI say will show here, and you can copy it."; return; }
-    log.forEach(function (e) {
-      var d = document.createElement("div"); d.className = "vxi" + (e.code ? " code" : "");
-      var sm = document.createElement("small"); sm.textContent = (e.who === "you" ? "You" : "Tender Sprout AI") + (e.title ? " · " + e.title : "");
-      var pr = document.createElement("pre"); pr.textContent = e.text;
-      d.appendChild(sm); d.appendChild(pr);
-      if (e.who !== "you") {
-        var row = document.createElement("div"); row.className = "vxcp";
-        var cb = document.createElement("button"); cb.textContent = "Copy"; cb.onclick = function () { copyTxt(e.text, cb); };
-        row.appendChild(cb);
-        var cd = e.code ? "" : codeOf(e.text);
-        if (cd) { var cc = document.createElement("button"); cc.textContent = "Copy code"; cc.onclick = function () { copyTxt(cd, cc); }; row.appendChild(cc); }
-        d.appendChild(row);
-      }
-      list.appendChild(d);
-    });
-    list.scrollTop = list.scrollHeight;
-  }
-
-  function set(s, text) {
-    state = s; ov.dataset.s = s;
-    if (text !== undefined) { var e = q("vxSt"); e.textContent = text; e.classList.toggle("on", /^(Error|Microphone|No internet|No microphone)/.test(text)); }
-  }
-  function level(an) {
-    an.getFloatTimeDomainData(buf);
-    var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-    return Math.min(1, Math.sqrt(sum / buf.length) * 10);
-  }
-  function setLevel(v) { ov.style.setProperty("--l", v); }
-
-  /* --- recording straight from the mic (no MediaRecorder, so we can keep a pre-roll and resend) --- */
-  function onAudio(e) {
-    if (!on || paused) return;
-    var inp = e.inputBuffer.getChannelData(0), ratio = ctx.sampleRate / SR, n = Math.floor(inp.length / ratio), out = new Int16Array(n);
-    for (var i = 0; i < n; i++) {
-      var a = Math.floor(i * ratio), b = Math.min(inp.length, Math.floor((i + 1) * ratio)), s = 0, c = 0;
-      for (var j = a; j < b; j++) { s += inp[j]; c++; }
-      var v = c ? s / c : 0; out[i] = Math.max(-1, Math.min(1, v)) * 32767;
-    }
-    if (talking) { utt.push(out); if (utt.length > 700 && state === "listen") submit(); }
-    else { pre.push(out); if (pre.length > PRE_BLOCKS) pre.shift(); }
-  }
-  function wavB64(blocks) {
-    var len = 0; blocks.forEach(function (b) { len += b.length; });
-    var buffer = new ArrayBuffer(44 + len * 2), dv = new DataView(buffer);
-    function str(o, t) { for (var i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); }
-    str(0, "RIFF"); dv.setUint32(4, 36 + len * 2, true); str(8, "WAVE"); str(12, "fmt "); dv.setUint32(16, 16, true);
-    dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
-    dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); str(36, "data"); dv.setUint32(40, len * 2, true);
-    var o = 44; blocks.forEach(function (b) { for (var i = 0; i < b.length; i++) { dv.setInt16(o, b[i], true); o += 2; } });
-    var bytes = new Uint8Array(buffer), s = "";
-    for (var k = 0; k < bytes.length; k += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(k, k + 0x8000));
-    return btoa(s);
-  }
-
-  /* --- playing sound --- */
-  function playB64(b64) {
-    return new Promise(function (res) {
-      var done = false;
-      function fin() { if (done) return; done = true; player.onended = null; player.onerror = null; if (stopFn === fin) stopFn = null; res(); }
-      stopFn = fin; player.onended = fin; player.onerror = fin;
-      levelOf(b64).then(function (m) {
-        if (done) return;
-        auto = m; applyVol();
-        player.src = "data:audio/mpeg;base64," + b64;
-        player.play().catch(fin);
-      });
-    });
-  }
-  function stopPlayback() { try { player.pause(); } catch (e) {} if (stopFn) { var f = stopFn; stopFn = null; f(); } }
-
-  /* --- short spoken reactions ("Mm-hm", "Oh nice!", "Good question."), made once per voice and kept on the phone --- */
-  var HELLO = "Okay, I'm listening.";
-  var ACKS = {
-    early: ["Mm-hm.", "Okay.", "Right.", "I see.", "Okay, okay."],
-    listen: ["Mm-hm, I'm listening.", "Okay... I'm listening.", "Go on, I'm listening.", "Take your time, I'm listening."],
-    wait: ["Let me think.", "Hmm, let's see.", "Just a second.", "Let's see..."],
-    ok:   ["Mm-hm.", "Aha.", "Okay.", "Right.", "I see.", "Okay, got it."],
-    ask:  ["Good question.", "Hmm, let me think.", "Okay, one moment.", "Sure."],
-    task: ["Sure thing.", "Alright.", "Okay, on it."],
-    wait2: ["Almost there.", "Just a little more.", "Okay, nearly done.", "Thanks for waiting."],
-    nudge: ["I'm still here. Take your time.", "Okay, I'm listening whenever you're ready."],
-    work: ["Sure, I'll put that in your chat.", "Okay, I'll make that in your chat.", "On it. Give me a moment."],
-    ready: ["It's ready. Tap the text button to copy it.", "Done. You can copy it from the text button."],
-    good: ["Oh nice!", "That's great!", "Oh wow, nice."],
-    sad:  ["Aww.", "Oh no.", "Hmm, I'm sorry to hear that."]
-  };
-  function allLines() { var a = [HELLO]; Object.keys(ACKS).forEach(function (c) { a = a.concat(ACKS[c]); }); return a; }
-  function fxKey() { return "tsa_voice_fx2_" + (voice || "default"); }
-  var fxMem = null, fxBusy = {};
-  function fxLoad() {
-    var k = fxKey(); if (fxMem && fxMem.k === k) return fxMem.v;
     var v = {}; try { v = JSON.parse(localStorage.getItem(k)) || {}; } catch (e) {}
     try { localStorage.removeItem("tsa_voice_fx_" + (voice || "default")); } catch (e) {}
     fxMem = { k: k, v: v }; return v;
@@ -662,6 +525,7 @@
   function respond(my, text) {
     dropHeld(); resetUtt(); pre = [];
     if (isWork(text) && window.tsaVoice && window.tsaVoice.work) { handleWork(my, text); return; }
+    if (CAMRE.test(text)) { addLog("you", text); var ca = pickFrom("task", true); if (ca) playClip(ca.audio); openCam("", true); return; }
     var ack = early ? null : pickFrom(classify(text));
     if (ack) playClip(ack.audio);
     armFiller(ack || early ? 2600 : 1500); cont = 0;
@@ -679,7 +543,7 @@
       (r.blocks || []).forEach(function (b) { addLog("ai", b.text, b.title, b.code); });
       if (r.pdf) addLog("ai", "Your PDF \"" + r.pdf + "\" is ready. Open your chat and tap the PDF link, then Save as PDF.", "PDF");
       history.push({ role: "user", content: text }, { role: "assistant", content: "I made it in the chat." });
-      history = history.slice(-16); save("tsa_voice_history", history);
+      history = history.slice(-40); save("tsa_voice_history", history);
     }
     if (my !== turn || !on) return;
     if (r && r.ok) {
@@ -698,12 +562,13 @@
       var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
       var V = window.tsaVoice;                                   // the main app (chat + memory), when it is there
       var mem = (V && V.notes) ? V.notes() : memory;
-      var d = await post("/api/voice", { text: text, ack: ack, history: history, memory: mem, lang: lang, langName: name, mode: MODE, spoken: true }, c && c.signal);
+      var d = await post("/api/voice", { text: text, ack: ack, history: history.slice(-12), memory: mem, lang: lang, langName: name, mode: MODE, spoken: true, now: new Date().toLocaleString(), tasks: tasks, device: {}, extra: { offset: new Date().getTimezoneOffset() } }, c && c.signal);
       if (my !== turn) return;
       fillerArmed = false;
       if (!d.reply) { listen(); return; }
       history.push({ role: "user", content: text }, { role: "assistant", content: d.reply });
-      history = history.slice(-16); save("tsa_voice_history", history);
+      history = history.slice(-40); save("tsa_voice_history", history);
+      (d.actions || []).forEach(applyAct);
       if (V && V.turn) { try { V.turn(text, d.reply); } catch (e) {} }          // show it in the chat
       addLog("you", text); addLog("ai", d.reply);
       if (d.mem) {
@@ -741,6 +606,7 @@
         await playB64(v.audio);
         if (my !== turn) return;                 // you interrupted
       }
+      if (pendingCam && my === turn && on) { var pc = pendingCam; pendingCam = null; openCam(pc.q, true); return; }
       if (my === turn && on && !paused) { pre = []; listen(); }
     } catch (e) {
       if (my !== turn) return;
@@ -749,12 +615,121 @@
     }
   }
 
-  async function post(path, body, signal) {
-    var r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: signal });
-    var d = {}; try { d = await r.json(); } catch (e) {}
-    if (!r.ok) throw new Error(d.error || "Request failed");
-    return d;
+  /* talking to the Jarvis server: it is locked with your passcode, so sign in once (the phone remembers it for 30 days) */
+  var loginP = null, loginAsked = false;
+  function signIn() {
+    if (loginP) return loginP;
+    loginAsked = true;
+    loginP = (async function () {
+      var pc = window.prompt("Enter your Jarvis passcode (the same one you use to open Jarvis):");
+      if (!pc) throw new Error("Passcode needed. Tap the orb to try again.");
+      var r = await fetch(API + "/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: pc }) });
+      var d = {}; try { d = await r.json(); } catch (e) {}
+      if (!r.ok || !d.token) throw new Error(d.error || "Could not sign in (" + r.status + ")");
+      token = d.token; put("tsa_voice_token", token);
+    })();
+    var clear = function () { loginP = null; };
+    loginP.then(clear, clear);
+    return loginP;
   }
+  async function post(path, body, signal, opt) {
+    for (var tries = 0; tries < 2; tries++) {
+      if (!token && opt && opt.quiet && loginAsked) throw new Error("Not signed in");
+      var h = { "Content-Type": "application/json" }; if (token) h.Authorization = "Bearer " + token;
+      var r = await fetch(API + path, { method: "POST", headers: h, body: JSON.stringify(body), signal: signal });
+      var d = {}; try { d = await r.json(); } catch (e) {}
+      if (r.status === 401 && tries === 0) { token = ""; put("tsa_voice_token", ""); await signIn(); continue; }
+      if (!r.ok) throw new Error(d.error || ("Request failed (" + r.status + ")"));
+      return d;
+    }
+  }
+  window.tsaJarvis = { search: function (query) { return post("/api/search", { query: query }, null, { quiet: true }); } };
+
+  /* ---------- plans the AI writes down for you ---------- */
+  function applyAct(a) {
+    if (!a) return;
+    if (a.action === "task_add" && a.task) tasks = tasks.concat(a.task);
+    else if (a.action === "task_done") tasks = tasks.map(function (t) { return t.id === a.id ? { id: t.id, text: t.text, done: true } : t; });
+    else if (a.action === "task_remove") tasks = tasks.filter(function (t) { return t.id !== a.id; });
+    else if (a.action === "look") { pendingCam = { q: String(a.question || "") }; return; }
+    else return;
+    save("tsa_voice_tasks", tasks);
+  }
+
+  /* ---------- camera: show it something and it tells you what it sees (or solves it) ---------- */
+  var CAMRE = /\b(what (do|can) you see|can you see (this|me|it)|look (at|through) (this|that|it|the camera)|(open|use|turn on|start) (the |my )?camera|scan (this|that|it)|take a (look|photo|picture)|show you (this|something))\b/i;
+  var camStream = null, camFacing = "environment", camTimer = null, camBusy = false, camWasOn = false, camGen = 0;
+  function camSay(t) { q("vxCamTxt").textContent = t; }
+  async function camStart() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw { name: "NoMediaDevices" };
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: camFacing }, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
+      var v = q("vxCamV"); v.srcObject = camStream; v.play().catch(function () {});
+    } catch (e) {
+      camStream = null;
+      camSay("Error: camera could not open. " + (e && e.name === "NotAllowedError" ? "Allow the camera for this site in your browser settings." : ((e && e.message) || "")));
+    }
+  }
+  function camStop() { clearTimeout(camTimer); if (camStream) { camStream.getTracks().forEach(function (t) { t.stop(); }); camStream = null; } q("vxCamV").srcObject = null; }
+  async function openCam(question, auto) {
+    camWasOn = on && !paused; if (camWasOn) pause();                 // the mic rests while the camera is open
+    q("vxCam").hidden = false; q("vxCamQ").value = question || ""; q("vxCamOut").textContent = ""; camSay("Hold it up so I can see it...");
+    await camStart();
+    if (auto && camStream) {
+      var n = 3;
+      (function count() {
+        if (q("vxCam").hidden || !camStream || camBusy) return;
+        if (n <= 0) { camLook(); return; }
+        camSay("Hold it steady... " + n); n--; camTimer = setTimeout(count, 1000);
+      })();
+    }
+  }
+  function closeCam() { camGen++; stopPlayback(); camStop(); q("vxCam").hidden = true; if (on && paused && camWasOn) pause(); camWasOn = false; }
+  async function camLook() {
+    if (!camStream) return;
+    stopPlayback(); var gen = ++camGen;                               // a new look stops the old reading
+    var v = q("vxCamV"), w = v.videoWidth, h = v.videoHeight;
+    if (!w || !h) { camSay("The camera is not ready yet. Try again in a second."); return; }
+    camBusy = true; clearTimeout(camTimer);
+    var k = Math.min(1, 1280 / Math.max(w, h)), c = document.createElement("canvas");
+    c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+    var img = c.toDataURL("image/jpeg", 0.8), question = q("vxCamQ").value.trim();
+    camSay("Looking..."); q("vxCamOut").textContent = "";
+    try {
+      var name = (LANGS.filter(function (l) { return l[0] === lang; })[0] || [])[1] || "";
+      var d = await post("/api/look", { image: img, question: question, langName: name });
+      if (gen !== camGen) return;
+      var shown = String(d.reply || "").trim();
+      q("vxCamOut").textContent = shown; camSay("Tap Look to check again, or Close to go back.");
+      var said = "[Camera] " + (question || "What is this?");
+      addLog("you", said); addLog("ai", shown);
+      var V = window.tsaVoice; if (V && V.turn) { try { V.turn(said, shown); } catch (e) {} }
+      history.push({ role: "user", content: said }, { role: "assistant", content: shown.slice(0, 600) });
+      history = history.slice(-40); save("tsa_voice_history", history);
+      var a = await post("/api/speak", { text: String(d.say || shown).slice(0, 400), voice: voice });
+      if (gen !== camGen) return;
+      try { initAudio(); await ctx.resume(); } catch (e) {}
+      if (!q("vxCam").hidden) await playB64(a.audio);
+    } catch (e) { if (gen === camGen) camSay("Error: " + (navigator.onLine ? e.message : "No internet.")); }
+    camBusy = false;
+  }
+  q("vxCamBtn").onclick = function () { openCam("", false); };
+  q("vxCamLook").onclick = camLook;
+  q("vxCamFlip").onclick = async function () { stopPlayback(); camStop(); camFacing = camFacing === "environment" ? "user" : "environment"; await camStart(); };
+  q("vxCamClose").onclick = closeCam;
+
+  /* ---------- what it remembers ---------- */
+  function renderMem() {
+    var box = q("vxMem"); box.textContent = "";
+    var V = window.tsaVoice, notes = (V && V.notes) ? V.notes() : memory;
+    function line(t) { var d = document.createElement("div"); d.textContent = t; box.appendChild(d); }
+    line("Our last " + Math.floor(history.length / 2) + " talks are kept on this phone so I can pick up where we stopped.");
+    notes.slice(0, 12).forEach(function (n) { line("• " + n); });
+    if (!notes.length) line("No saved facts yet. Say 'remember that...' and I will keep it. Saved facts also show in Memory & Learning.");
+    tasks.slice(0, 12).forEach(function (t) { line((t.done ? "✓ " : "○ ") + "Plan: " + t.text); });
+  }
+  q("vxMemClr").onclick = function () { history = []; memory = []; save("tsa_voice_history", history); save("tsa_voice_memory", memory); renderMem(); q("vxMsg").textContent = "Done. I won't recall our earlier talks. Facts in Memory & Learning stay until you delete them there."; };
+  q("vxTaskClr").onclick = function () { tasks = []; save("tsa_voice_tasks", tasks); renderMem(); };
 
   q("vxOrb").onclick = function () {
     if (!on) begin(); else if (paused) pause(); else if (state === "speak" || state === "think") { cancelPending(); pre = []; listen(); }
@@ -765,7 +740,7 @@
   q("vxLog").onclick = function (e) { if (e.target.id === "vxLog") e.target.hidden = true; };
   q("vxLogClear").onclick = function () { log = []; saveLog(); renderLog(); };
   q("vxLogChat").onclick = function () { close(); };
-  function close() { end(); ov.hidden = true; q("vxSheet").hidden = true; q("vxLog").hidden = true; }
+  function close() { camStop(); q("vxCam").hidden = true; end(); ov.hidden = true; q("vxSheet").hidden = true; q("vxLog").hidden = true; }
   q("vxEnd").onclick = close;
   q("vxBack").onclick = close;
   open.onclick = function () { ov.hidden = false; if (!on) begin(); };
@@ -785,7 +760,7 @@
   function setVoice(v) { voice = v; put("tsa_voice_id", v); }
   drawVoices();
   q("vxVoice").onchange = function (e) { setVoice(e.target.value); };
-  q("vxGear").onclick = function () { q("vxMsg").textContent = ""; q("vxSheet").hidden = false; };
+  q("vxGear").onclick = function () { q("vxMsg").textContent = ""; renderMem(); q("vxSheet").hidden = false; };
   q("vxDone").onclick = function () { q("vxSheet").hidden = true; };
   q("vxSheet").onclick = function (e) { if (e.target.id === "vxSheet") e.target.hidden = true; };
   q("vxAdd").onclick = function () {
