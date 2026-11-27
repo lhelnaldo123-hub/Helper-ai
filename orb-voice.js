@@ -19,6 +19,12 @@
   var voice = get("tsa_voice_id"), lang = get("tsa_voice_lang");
   var token = get("tsa_voice_token"), tasks = load("tsa_voice_tasks"), pendingCam = null;
 
+  var LU = {
+    mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+    micOff: '<line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>'
+  };   // Lucide icons, drawn inline so they work offline
+  function lu(n, sz) { return '<svg class="lu" viewBox="0 0 24 24" width="' + (sz || 16) + '" height="' + (sz || 16) + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + LU[n] + '</svg>'; }
   /* ---------- styles ---------- */
   var css = [
     "#vxOv{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;color:#e8eaf2;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;",
@@ -93,7 +99,18 @@
     "#vxCamOut{font-size:.95rem;line-height:1.4;max-height:26dvh;overflow:auto;white-space:pre-wrap}",
     "#vxCam input{width:100%;border:1px solid #2a315a;background:#11152b;color:inherit;border-radius:12px;padding:.7rem .8rem;font:inherit}",
     "#vxCam button{flex:1;padding:.8rem;border-radius:999px;border:1px solid #2a315a;background:#11152b;color:inherit;font:inherit}",
-    "#vxCam .vxpri{background:#2f6bff;border:0;color:#fff}"
+    "#vxCam .vxpri{background:#2f6bff;border:0;color:#fff}",
+    "#vxState{display:flex;align-items:center;justify-content:center;gap:.5rem;margin:0 auto .7rem;padding:.4rem .95rem;border-radius:999px;font-size:.85rem;background:rgba(255,255,255,.1);border:1px solid var(--line);width:max-content;max-width:90%}",
+    "#vxState i{width:9px;height:9px;border-radius:50%;background:#19d3c5;box-shadow:0 0 8px #19d3c5;flex:none}",
+    "#vxOv[data-s=think] #vxState i{background:#a56bff;box-shadow:0 0 8px #a56bff}",
+    "#vxOv[data-s=speak] #vxState i{background:#ff8a3d;box-shadow:0 0 8px #ff8a3d}",
+    "#vxState.off i{background:#ff6b6b;box-shadow:none}",
+    ".vxcard .vxseg button.act{background:var(--c2);color:#fff;border-color:transparent}",
+    ".vxf{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--line)}",
+    ".vxf span{flex:1;min-width:0;overflow-wrap:anywhere}",
+    ".vxcard .vxf button{flex:none;padding:.25rem .65rem;border-radius:10px;font-size:.75rem}",
+    ".vxcard .vxseg button,.vxcard .vxf button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem}",
+    ".lu{vertical-align:-2px;flex:none}"
   ].join("");
   var st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);
 
@@ -112,6 +129,7 @@
     '</div>' +
     '<div class="vxmid"><div class="vxw"><span class="vxring"></span><span class="vxring vxr2"></span>' +
       '<button class="vxorb" id="vxOrb" aria-label="Tap to talk"><i></i><i></i><i></i></button></div></div>' +
+    '<p id="vxState" class="off" role="status" aria-live="polite"><i></i><span id="vxStateT">Tap the orb to talk</span></p>' +
     '<p id="vxSt"></p>' +
     '<div id="vxFile" hidden><span id="vxFileN"></span><button id="vxFileX" aria-label="Remove file">\u00d7</button></div>' +
     '<input type="file" id="vxFileIn" multiple hidden>' +
@@ -119,7 +137,7 @@
       gb("vxCamBtn", "Camera", '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>') +
       gb("vxFileBtn", "File", '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>') +
       gb("vxMsgBtn", "Messages", '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>') +
-      gb("vxPause", "Pause", '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>') +
+      gb("vxPause", "Mute", LU.mic) +
       gb("vxEnd", "End", '<path d="M18 6 6 18M6 6l12 12"/>') +
     '</div>' +
     '<div id="vxSheet" hidden><div class="vxcard">' +
@@ -128,6 +146,9 @@
       '<label>Voice</label><select id="vxVoice" aria-label="Voice"></select>' +
       '<label>Voice volume: <span id="vxVolV"></span></label><input type="range" id="vxVol" min="50" max="300" step="10" aria-label="Voice volume">' +
       '<div class="vxseg"><button id="vxTest">Test voice</button><button id="vxDel">Remove</button></div>' +
+      '<label>How long I wait when you pause</label>' +
+      '<div class="vxseg" id="vxPat"><button data-p="quick">Quick</button><button data-p="normal">Normal</button><button data-p="patient">Patient</button></div>' +
+      '<p class="vxhelp">Patient waits longer, so I do not cut in while you are thinking.</p>' +
       '<label>Add a voice</label>' +
       '<input id="vxName" placeholder="Name (for example Sarah)" autocomplete="off">' +
       '<input id="vxId" placeholder="Paste Fish voice link or ID" autocomplete="off">' +
@@ -135,6 +156,7 @@
       '<p class="vxhelp">On fish.audio, open a voice you like and copy its link from the browser.</p>' +
       '<label>What I remember</label><div id="vxMem" class="vxhelp"></div>' +
       '<div class="vxseg"><button id="vxMemClr">Forget our talks</button><button id="vxTaskClr">Clear plans</button></div>' +
+      '<div class="vxseg"><button id="vxLogClr">'+lu("trash", 15)+' Delete text log</button><button id="vxAllClr">'+lu("trash", 15)+' Delete all voice data</button></div>' +
       '<div id="vxMsg"></div>' +
       '<button class="vxpri" id="vxDone">Done</button>' +
     '</div></div>' +
@@ -169,7 +191,10 @@
   /* ---------- voice engine ---------- */
   var SR = 16000;                       // speech is recorded as 16 kHz mono WAV
   var T_ON = 0.12, T_BARGE = 0.16;      // how loud counts as "you are talking" / "you are interrupting"
-  var END_MS = 700;                     // silence that ends your turn (waits a bit longer after very short speech)
+  var END_MS = 700;                     // (kept for reference) the real wait now comes from PATS below
+  var PATS = { quick: [500, 800], normal: [700, 1000], patient: [1100, 1500] };   // [silence that ends a turn, same after very short speech] in ms
+  var pat = get("tsa_voice_pat"); if (!PATS[pat]) pat = "normal";
+  var padMs = 0;                        // grows a little when you often pause mid-thought, shrinks when you speak in full sentences
   var PRE_BLOCKS = 6;                   // keeps the last half second so first words are never lost
 
   var state = "idle", on = false, paused = false, turn = 0;
@@ -232,11 +257,19 @@
     list.scrollTop = list.scrollHeight;
   }
 
-  function pLabel(t) { var e = q("vxPauseL"); if (e) e.textContent = t; }
+  function pLabel(t) { var e = q("vxPauseL"); if (e) e.textContent = t; var b = q("vxPause"), sv = b && b.querySelector("svg"); if (sv) sv.innerHTML = (t === "Unmute") ? LU.micOff : LU.mic; }
   function set(s, text) {
-    state = s; ov.dataset.s = s;
+    state = s; ov.dataset.s = s; showState();
     if (text !== undefined) { var e = q("vxSt"); e.textContent = text; e.classList.toggle("on", /^(Error|Microphone|No internet|No microphone)/.test(text)); }
   }
+  /* the pill under the orb: always says whether the mic is live, thinking, speaking or off */
+  function showState() {
+    var t = q("vxStateT"), p = q("vxState"); if (!t || !p) return;
+    var off = !on || paused || state === "idle";
+    t.textContent = !on ? "Tap the orb to talk" : paused ? "Mic is off \u00b7 tap Unmute" : state === "listen" ? "Listening" : state === "think" ? "Thinking\u2026" : state === "speak" ? "Speaking \u00b7 talk to interrupt" : "Ready \u00b7 tap the orb";
+    p.classList.toggle("off", off);
+  }
+  function muteTracks(m) { try { if (stream) stream.getAudioTracks().forEach(function (t) { t.enabled = !m; }); } catch (e) {} }   // a real mute: the mic sends silence while muted
   function level(an) {
     an.getFloatTimeDomainData(buf);
     var sum = 0; for (var i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
@@ -366,7 +399,9 @@
     return words >= 4 ? "ok" : "";
   }
   /* did you stop mid-thought? (ends with "and", "but", "so", "um", "...", a comma, and so on) */
-  var HANG = ["and", "but", "so", "because", "or", "the", "a", "an", "to", "of", "with", "for", "in", "on", "at", "that", "if", "when", "my", "your", "um", "uh", "umm", "uhh", "hmm", "like", "then", "also", "i'm", "it's", "why", "about", "from", "than", "which"];
+  var HANG = ["and", "but", "so", "because", "or", "the", "a", "an", "to", "of", "with", "for", "in", "on", "at", "that", "if", "when", "my", "your", "um", "uh", "umm", "uhh", "hmm", "like", "then", "also", "i'm", "it's", "why", "about", "from", "than", "which",
+    "et", "mais", "donc", "parce", "car", "ou", "le", "la", "les", "un", "une", "de", "du", "des", "\u00e0", "au", "avec", "pour", "que", "qui", "si", "quand", "mon", "ma", "mes", "dans", "sur", "puis", "alors", "euh", "ben", "bah",
+    "na", "anaa", "nanso", "efis\u025b", "s\u025b"];
   function incomplete(t) {
     t = t.trim(); if (!t) return false;
     if (/(\.\.\.|…|[,;:\-–—])\s*$/.test(t)) return true;
@@ -488,15 +523,15 @@
     }
   }
   function end() {
-    on = false; paused = false; cancelPending(); resetUtt(); dropHeld(); job = null; carry = ""; pendingUser = "";
+    on = false; paused = false; padMs = 0; cancelPending(); resetUtt(); dropHeld(); job = null; carry = ""; pendingUser = "";
     try { if (proc) { proc.onaudioprocess = null; proc.disconnect(); } if (srcNode) srcNode.disconnect(); } catch (e) {}
     if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
-    setLevel(0); pLabel("Pause"); set("idle", "");
+    setLevel(0); pLabel("Mute"); set("idle", "");
   }
   function pause() {
     if (!on) return;
-    if (!paused) { paused = true; cancelPending(); resetUtt(); dropHeld(); setLevel(0); pLabel("Resume"); set("idle", ""); }
-    else { paused = false; pLabel("Pause"); pre = []; listen(); }
+    if (!paused) { paused = true; cancelPending(); resetUtt(); dropHeld(); setLevel(0); pLabel("Unmute"); muteTracks(true); set("idle", ""); }
+    else { paused = false; pLabel("Mute"); muteTracks(false); pre = []; listen(); }
   }
 
   function tick(now) {
@@ -507,7 +542,7 @@
       setLevel((state === "speak" ? (outAn ? level(outAn) : 0.25) : state === "listen" ? mic : 0).toFixed(3));
       if (state === "listen") {
         if (mic > (fxPlaying ? T_BARGE : T_ON)) { if (!talking) startTalk(); if (!speechStart) speechStart = now; lastVoice = now; }
-        else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? 1000 : END_MS)) submit();
+        else if (talking && speechStart && now - lastVoice > ((lastVoice - speechStart) < 1200 ? PATS[pat][1] : PATS[pat][0]) + padMs) submit();
       } else if (state === "think") {
         // you kept talking: forget the early answer and keep listening
         if (!fxPlaying) { if (mic > T_ON) cont += dt; else cont = Math.max(0, cont - dt); }
@@ -548,7 +583,7 @@
       if (!heard) { if (held) respond(my, held); else listen(); return; }
       var full = (held ? held + " " : "") + heard;
       if (holds < 2 && incomplete(full)) {          // still thinking out loud: keep listening and join the next part
-        held = full; holds++; resetUtt(); pre = []; listen(); armHold(); armBC(); return;
+        held = full; holds++; padMs = Math.min(600, padMs + 200); resetUtt(); pre = []; listen(); armHold(); armBC(); return;
       }
       respond(my, full);
     } catch (e) {
@@ -562,7 +597,7 @@
   function respond(my, text) {
     var shownText = text;
     if (carry) { text = "(Before you answered I had asked: \"" + carry + "\". I interrupted and now add:) " + text; carry = ""; }
-    pendingUser = shownText;
+    pendingUser = shownText; padMs = Math.max(0, padMs - 100);
     dropHeld(); resetUtt(); pre = [];
     if (localCmd(my, shownText)) return;
     if (doc && doc.kind === "img" && !CAMRE.test(text)) { lookDoc(my, shownText); return; }
@@ -915,15 +950,43 @@
   /* ---------- what it remembers ---------- */
   function renderMem() {
     var box = q("vxMem"); box.textContent = "";
-    var V = window.tsaVoice, notes = (V && V.notes) ? V.notes() : memory;
+    var V = window.tsaVoice;
     function line(t) { var d = document.createElement("div"); d.textContent = t; box.appendChild(d); }
     line("Our last " + Math.floor(history.length / 2) + " talks are kept on this phone so I can pick up where we stopped.");
-    notes.slice(0, 12).forEach(function (n) { line("• " + n); });
-    if (!notes.length) line("No saved facts yet. Say 'remember that...' and I will keep it. Saved facts also show in Memory & Learning.");
-    tasks.slice(0, 12).forEach(function (t) { line((t.done ? "✓ " : "○ ") + "Plan: " + t.text); });
+    var facts = (V && V.facts) ? V.facts() : ((V && V.notes) ? V.notes() : memory).map(function (t) { return { id: "", text: t, src: "" }; });
+    facts.slice(0, 12).forEach(function (f) {
+      var row = document.createElement("div"); row.className = "vxf";
+      var sp = document.createElement("span"); sp.textContent = (f.src === "voice" ? "" : "\u2022 ") + f.text; if (f.src === "voice") sp.insertAdjacentHTML("afterbegin", lu("mic", 13) + " "); row.appendChild(sp);
+      if (f.id && V && V.forget) {
+        var b = document.createElement("button"); b.innerHTML = lu("trash", 13) + " Delete";
+        b.onclick = function () { try { V.forget(f.id); } catch (e) {} renderMem(); };
+        row.appendChild(b);
+      }
+      box.appendChild(row);
+    });
+    if (facts.length > 12) line("\u2026and " + (facts.length - 12) + " more in Memory & Learning.");
+    if (!facts.length) line("No saved facts yet. Say 'remember that...' and I will keep it. Saved facts also show in Memory & Learning.");
+    tasks.slice(0, 12).forEach(function (t) { line((t.done ? "\u2713 " : "\u25CB ") + "Plan: " + t.text); });
   }
   q("vxMemClr").onclick = function () { history = []; memory = []; save("tsa_voice_history", history); save("tsa_voice_memory", memory); renderMem(); q("vxMsg").textContent = "Done. I won't recall our earlier talks. Facts in Memory & Learning stay until you delete them there."; };
   q("vxTaskClr").onclick = function () { tasks = []; save("tsa_voice_tasks", tasks); renderMem(); };
+  q("vxLogClr").onclick = function () { log = []; saveLog(); renderLog(); renderMem(); q("vxMsg").textContent = "Text log deleted."; };
+  q("vxAllClr").onclick = function () {
+    if (!confirm("Delete all voice data on this phone: our talks, the text log, plans and facts saved by voice? This cannot be undone.")) return;
+    window.tsaVoiceData.clear("all"); q("vxMsg").textContent = "All voice data deleted.";
+  };
+  /* lets the Memory & Learning screen in the main app show and clear voice data too */
+  window.tsaVoiceData = {
+    stats: function () { return { talks: Math.floor(history.length / 2), log: log.length, plans: tasks.length }; },
+    clear: function (what) {
+      var all = what === "all";
+      if (all || what === "talks") { history = []; memory = []; save("tsa_voice_history", history); save("tsa_voice_memory", memory); }
+      if (all || what === "log") { log = []; saveLog(); try { renderLog(); } catch (e) {} }
+      if (all || what === "plans") { tasks = []; save("tsa_voice_tasks", tasks); }
+      if (all) { var V = window.tsaVoice; if (V && V.forgetVoice) { try { V.forgetVoice(); } catch (e) {} } }
+      try { renderMem(); } catch (e) {}
+    }
+  };
 
   q("vxOrb").onclick = function () {
     if (!on) begin(); else if (paused) pause(); else if (state === "speak" || state === "think") { markInterrupted(); cancelPending(); pre = []; listen(); }
@@ -969,6 +1032,9 @@
     voices = voices.filter(function (v) { return v.id !== voice; }); save("tsa_voice_voices", voices); setVoice(""); drawVoices();
   };
   q("vxVol").value = vol; q("vxVolV").textContent = vol + "%";
+  function drawPat() { var bs = q("vxPat").children; for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("act", bs[i].getAttribute("data-p") === pat); }
+  q("vxPat").onclick = function (e) { var p = e.target && e.target.getAttribute && e.target.getAttribute("data-p"); if (!p || !PATS[p]) return; pat = p; put("tsa_voice_pat", p); drawPat(); q("vxMsg").textContent = "Saved. I will wait " + (p === "quick" ? "a little less" : p === "patient" ? "longer" : "the normal time") + " when you pause."; };
+  drawPat();
   q("vxVol").oninput = function () { vol = parseInt(q("vxVol").value, 10) || 100; q("vxVolV").textContent = vol + "%"; put("tsa_voice_vol", String(vol)); applyVol(); };
   q("vxTest").onclick = async function () {
     q("vxMsg").textContent = "Loading voice…";
